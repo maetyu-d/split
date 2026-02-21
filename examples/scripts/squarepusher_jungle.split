@@ -1,0 +1,20 @@
+tempo 168
+steps 16
+swing 0.12
+laneSteps 0 16
+laneSteps 1 16
+
+break 0 0 k-hs-k-hk-hs-k- 1.0 1.0 every 1
+break 0 0 --g---h---g---h- 0.9 0.85 every 1
+
+drill 7 0 snare 5 0.9 0.7 every 2
+drill 15 0 snare 7 0.85 0.6 every 4
+
+note 0 1 [60 - 63 - 67 - 70 -] 0.8 0.25 bass 1.0 every 1
+note 8 1 [58 - 62 - 65 - 69 -] 0.8 0.25 bass 1.0 every 1
+
+mod 0 1 lane.pan -0.3 0.0 1.0 every 1
+mod 8 1 lane.pan 0.3 0.0 1.0 every 1
+
+stutter 0 snare 3 every 2 0.7
+rotate 0 1 every 4 0.6

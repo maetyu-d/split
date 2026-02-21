@@ -1,0 +1,22 @@
+tempo 142
+steps 16
+swing 0.02
+laneSteps 0 15
+laneSteps 1 16
+laneSteps 2 11
+
+break 0 0 k--h-s--k-h--s- 0.95 1.0 every 1
+break 0 0 -g--h---g--h--- 0.75 0.9 every 1
+
+note 0 1 [60 - 62 - 65 - 67 -] 0.7 0.5 pad 0.9 every 1
+note 0 2 [72 - - 74 - 76 - - 79 - -] 0.65 0.25 blip 0.85 every 1
+
+mod 0 1 lane.pan -0.55 0.0 1.0 every 3
+mod 4 1 lane.pan 0.55 0.0 1.0 every 3
+mod 8 2 lane.gain 1.2 0.0 0.7 every 5
+mod 2 2 lane.gain 0.6 0.0 0.7 every 5
+
+scramble 0 every 4 0.8
+rotate 1 2 every 3 0.9
+rotate 2 -1 every 2 0.9
+stutter 0 hat 3 every 4 0.5
