@@ -5,9 +5,15 @@ Split consists of the following two applications, developed in JUCE, that work t
 - `Pattern IDE` (language + live transport + timeline view)
 - `Plugin Host` (AU and VST3 lane host + mixer + recording)
 
-The Pattern IDE utilises the split music programming language that's largely a cross between Tidal and SuperCollider, and intended to simplify the creation of breakbeats and other ryhthmically interesting musical features in song-like structures. It produces no audio of its own and instead outputs to OSC on port 9001. As a bonus, most of the Monome Teletype language is supported as an alternative mode. The Plugin Host loads VST3 and/or AU plugins (instruments and effects) in any combination, and i) receives OSC messages on port 9001, ii) converts OSC to MIDI and routes it to the relevant plugins based on a lane system, and iii) provides fundamental mixing and recording facilities. The two applications are intented to be used together, but you could use one and build your own replacement for the other.
 
 ## What It Does
+
+The Pattern IDE utilises the split music programming language that's largely a cross between Tidal and SuperCollider, and intended to simplify the creation of breakbeats and other ryhthmically interesting musical features in song-like structures. It produces no audio of its own and instead outputs to OSC on port 9001. As a bonus, most of the Monome Teletype language is supported as an alternative mode. 
+
+The Plugin Host loads VST3 and/or AU plugins (instruments and effects) in any combination, and i) receives OSC messages on port 9001, ii) converts OSC to MIDI and routes it to the relevant plugins based on a lane system, and iii) provides fundamental mixing and recording facilities. 
+
+The two applications are intented to be used together, but you could use one and build your own replacement for the other.
+
 
 ### Pattern IDE
 - Split-style pattern language (`trigger`, `note`, `mod`, `break`, `drill`, mutations, sections)
