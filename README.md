@@ -5,7 +5,7 @@
 split consists of the following two applications, developed in JUCE, that work together over OSC:
 
 - `Pattern IDE` (split (or TT) language + live transport + timeline view)
-- `Plugin Host` (AU and VST3 lane host + mixer + recording)
+- `Plugin Host` (lane-based AU and VST3 host + mixer + recording)
 
 They're tested on Mac OS 13.7.7 and there's a brief demo [HERE](https://youtu.be/5kSPhPG40_o).
 
