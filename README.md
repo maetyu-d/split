@@ -30,6 +30,7 @@ The two applications are intented to be used together, but you could use one and
 - 10 track lanes + master lane
 - AU/VST3 plugin scanning and loading (instruments and effects)
 - Per-lane hidden/expandable FX chain + master FX chain
+- Ableton Link toggle (`Link` button; SDK-dependent)
 - Lane gain/pan/mute/solo + master gain
 - Plugin editor windows for instruments/effects
 - OSC lane activity indicators
@@ -49,6 +50,13 @@ cmake -S . -B build
 cmake --build build -j8
 ```
 
+To compile with Ableton Link backend support (if Link SDK is available in your toolchain):
+
+```bash
+cmake -S . -B build -DSPLIT_ENABLE_ABLETON_LINK=ON
+cmake --build build -j8
+```
+
 ## Run Both Apps
 
 ```bash
@@ -59,6 +67,8 @@ open "/Users/md/Downloads/Split audio programming/build/PatternIDE_artefacts/Pat
 Recommended order:
 1. Open `Plugin Host` first, set audio device/output, load plugins.
 2. Open `Pattern IDE`, load a script, press `Run`.
+
+If the host shows `Link N/A`, build without/without-detected Link SDK; with SDK and `SPLIT_ENABLE_ABLETON_LINK=ON` it shows `Link Off/On`.
 
 ## Examples
 

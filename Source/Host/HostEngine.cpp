@@ -4,6 +4,81 @@
 #include <algorithm>
 #include <cmath>
 
+#if SPLIT_ENABLE_ABLETON_LINK
+ #if __has_include(<ableton/Link.hpp>)
+  #include <ableton/Link.hpp>
+  #define SPLIT_HAS_ABLETON_LINK_BACKEND 1
+ #else
+  #define SPLIT_HAS_ABLETON_LINK_BACKEND 0
+ #endif
+#else
+ #define SPLIT_HAS_ABLETON_LINK_BACKEND 0
+#endif
+
+class AbletonLinkBackend
+{
+public:
+    AbletonLinkBackend() = default;
+    virtual ~AbletonLinkBackend() = default;
+    virtual bool isAvailable() const = 0;
+    virtual void setEnabled(bool enabled) = 0;
+    virtual bool isEnabled() const = 0;
+    virtual void setTempo(double bpm) = 0;
+    virtual double getTempo() = 0;
+};
+
+#if SPLIT_HAS_ABLETON_LINK_BACKEND
+class AbletonLinkBackendImpl final : public AbletonLinkBackend
+{
+public:
+    AbletonLinkBackendImpl()
+        : link(120.0)
+    {
+        link.enable(false);
+        link.enableStartStopSync(true);
+    }
+
+    bool isAvailable() const override { return true; }
+
+    void setEnabled(bool enabled) override
+    {
+        link.enable(enabled);
+    }
+
+    bool isEnabled() const override
+    {
+        return link.isEnabled();
+    }
+
+    void setTempo(double bpm) override
+    {
+        const auto micros = link.clock().micros();
+        auto state = link.captureAppSessionState();
+        state.setTempo(juce::jlimit(20.0, 300.0, bpm), micros);
+        link.commitAppSessionState(state);
+    }
+
+    double getTempo() override
+    {
+        const auto state = link.captureAppSessionState();
+        return state.tempo();
+    }
+
+private:
+    ableton::Link link;
+};
+#else
+class AbletonLinkBackendImpl final : public AbletonLinkBackend
+{
+public:
+    bool isAvailable() const override { return false; }
+    void setEnabled(bool) override {}
+    bool isEnabled() const override { return false; }
+    void setTempo(double) override {}
+    double getTempo() override { return 0.0; }
+};
+#endif
+
 namespace
 {
 class SineSound final : public juce::SynthesiserSound
@@ -371,6 +446,9 @@ private:
 
 HostEngine::HostEngine()
 {
+    linkBackend = std::make_unique<AbletonLinkBackendImpl>();
+    linkAvailable = (linkBackend != nullptr && linkBackend->isAvailable());
+
    #if JUCE_PLUGINHOST_AU
     formatManager.addFormat(std::make_unique<juce::AudioUnitPluginFormat>());
    #endif
@@ -436,6 +514,15 @@ HostEngine::HostEngine()
         options.launchAsync();
     };
 
+    addAndMakeVisible(linkButton);
+    styleTopButton(linkButton);
+    linkButton.setEnabled(linkAvailable);
+    linkButton.setButtonText(linkAvailable ? "Link Off" : "Link N/A");
+    linkButton.onClick = [this]
+    {
+        setLinkEnabled(! linkEnabled);
+    };
+
     addAndMakeVisible(recordButton);
     recordButton.setColour(juce::TextButton::buttonColourId, juce::Colour::fromRGB(74, 46, 46));
     recordButton.setColour(juce::TextButton::buttonOnColourId, juce::Colour::fromRGB(138, 52, 52));
@@ -491,7 +578,30 @@ HostEngine::HostEngine()
     uiStatus.setColour(juce::Label::backgroundColourId, juce::Colour::fromRGB(27, 33, 42).withAlpha(0.72f));
     uiStatus.setColour(juce::Label::outlineColourId, juce::Colour::fromRGB(66, 78, 96).withAlpha(0.55f));
     uiStatus.setOpaque(true);
-    uiStatus.setText("Ready. Click Refresh Plugins to scan AU/VST3.", juce::dontSendNotification);
+    uiStatus.setText("Ready. Click Reload Plugins to scan AU/VST3.", juce::dontSendNotification);
+
+    addAndMakeVisible(topRightStatusBox);
+    topRightStatusBox.setJustificationType(juce::Justification::centredLeft);
+    topRightStatusBox.setColour(juce::Label::backgroundColourId, juce::Colour::fromRGB(24, 30, 39).withAlpha(0.88f));
+    topRightStatusBox.setColour(juce::Label::outlineColourId, juce::Colour::fromRGB(66, 78, 96).withAlpha(0.72f));
+    topRightStatusBox.setColour(juce::Label::textColourId, juce::Colours::transparentBlack);
+    topRightStatusBox.setOpaque(true);
+    topRightStatusBox.setText({}, juce::dontSendNotification);
+
+    auto styleStateLine = [] (juce::Label& l)
+    {
+        l.setJustificationType(juce::Justification::centredLeft);
+        l.setColour(juce::Label::textColourId, juce::Colour::fromRGB(214, 222, 235));
+        l.setColour(juce::Label::backgroundColourId, juce::Colours::transparentBlack);
+        l.setFont(juce::Font(juce::FontOptions("Menlo", 11.5f, juce::Font::plain)));
+    };
+
+    addAndMakeVisible(audioStateLabel);
+    styleStateLine(audioStateLabel);
+    addAndMakeVisible(oscStateLabel);
+    styleStateLine(oscStateLabel);
+    addAndMakeVisible(linkStateLabel);
+    styleStateLine(linkStateLabel);
 
     addAndMakeVisible(masterHeaderLabel);
     masterHeaderLabel.setText("Master", juce::dontSendNotification);
@@ -860,12 +970,17 @@ HostEngine::HostEngine()
 
     deviceManager.addAudioCallback(this);
 
-    connect(oscproto::defaultPort);
-    addListener(this);
+    oscConnected = connect(oscproto::defaultPort);
+    if (oscConnected)
+        addListener(this);
+    else
+        appendLog("OSC bind failed on port " + juce::String(oscproto::defaultPort));
     startTimerHz(20);
 
     refreshPluginCatalog(false);
-    appendLog("Listening OSC on port " + juce::String(oscproto::defaultPort));
+    if (oscConnected)
+        appendLog("Listening OSC on port " + juce::String(oscproto::defaultPort));
+    refreshTopRightStatusBox();
 }
 
 HostEngine::~HostEngine()
@@ -918,6 +1033,71 @@ void HostEngine::timerCallback()
         repaint(masterMeterBounds.expanded(4));
 }
 
+void HostEngine::setLinkEnabled(bool shouldEnable)
+{
+    if (! linkAvailable || linkBackend == nullptr)
+        return;
+
+    linkEnabled = shouldEnable;
+    linkBackend->setEnabled(shouldEnable);
+    linkButton.setButtonText(linkEnabled ? "Link On" : "Link Off");
+    appendLog(linkEnabled ? "Ableton Link enabled" : "Ableton Link disabled");
+
+    if (linkEnabled)
+        pushTempoToLink(transportTempoBpm.load(std::memory_order_relaxed));
+
+    refreshTopRightStatusBox();
+}
+
+void HostEngine::pushTempoToLink(double bpm)
+{
+    if (! linkEnabled || linkBackend == nullptr)
+        return;
+    linkBackend->setTempo(juce::jlimit(20.0, 300.0, bpm));
+}
+
+double HostEngine::pullTempoFromLink()
+{
+    if (! linkEnabled || linkBackend == nullptr)
+        return 0.0;
+
+    const auto bpm = linkBackend->getTempo();
+    return juce::jlimit(20.0, 300.0, bpm);
+}
+
+void HostEngine::refreshTopRightStatusBox()
+{
+    const auto bpm = transportTempoBpm.load(std::memory_order_relaxed);
+    audioStateLabel.setText(lastAudioRunningState ? "Audio: Running" : "Audio: Stopped", juce::dontSendNotification);
+    audioStateLabel.setColour(juce::Label::textColourId, lastAudioRunningState
+                                                            ? juce::Colour::fromRGB(165, 232, 182)
+                                                            : juce::Colour::fromRGB(240, 170, 170));
+
+    oscStateLabel.setText(oscConnected
+                              ? ("OSC: Listening " + juce::String(oscproto::defaultPort))
+                              : ("OSC: Disconnected " + juce::String(oscproto::defaultPort)),
+                          juce::dontSendNotification);
+    oscStateLabel.setColour(juce::Label::textColourId, oscConnected
+                                                          ? juce::Colour::fromRGB(172, 214, 255)
+                                                          : juce::Colour::fromRGB(240, 170, 170));
+
+    if (! linkAvailable)
+    {
+        linkStateLabel.setText("Link: N/A", juce::dontSendNotification);
+        linkStateLabel.setColour(juce::Label::textColourId, juce::Colour::fromRGB(162, 174, 190));
+    }
+    else if (linkEnabled)
+    {
+        linkStateLabel.setText("Link: On  " + juce::String(bpm, 2) + " BPM", juce::dontSendNotification);
+        linkStateLabel.setColour(juce::Label::textColourId, juce::Colour::fromRGB(220, 196, 132));
+    }
+    else
+    {
+        linkStateLabel.setText("Link: Off  " + juce::String(bpm, 2) + " BPM", juce::dontSendNotification);
+        linkStateLabel.setColour(juce::Label::textColourId, juce::Colour::fromRGB(196, 179, 140));
+    }
+}
+
 void HostEngine::updateAudioHeartbeatUi()
 {
     const auto now = juce::Time::getMillisecondCounter();
@@ -927,22 +1107,23 @@ void HostEngine::updateAudioHeartbeatUi()
 
     const auto c = audioCallbackCounter.load(std::memory_order_relaxed);
     const auto running = (c != lastAudioCallbackCounter);
+    const auto stateChanged = (running != lastAudioRunningState);
     lastAudioCallbackCounter = c;
-    if (running != lastAudioRunningState)
+    if (stateChanged)
     {
         appendLog(running ? "Audio callback: running" : "Audio callback: stopped");
         lastAudioRunningState = running;
+        uiStatus.setText(running ? "Audio callback: running" : "Audio callback: stopped", juce::dontSendNotification);
     }
 
-    if (running)
+    if (linkEnabled)
     {
-        if (! uiStatus.getText().startsWith("Audio: running"))
-            uiStatus.setText("Audio: running | OSC " + juce::String(oscproto::defaultPort), juce::dontSendNotification);
+        const auto linkTempo = pullTempoFromLink();
+        if (linkTempo > 0.0)
+            transportTempoBpm.store(static_cast<float> (linkTempo), std::memory_order_relaxed);
     }
-    else
-    {
-        uiStatus.setText("Audio: stopped (no callback) | check output device", juce::dontSendNotification);
-    }
+
+    refreshTopRightStatusBox();
 
 }
 
@@ -1073,12 +1254,14 @@ void HostEngine::resized()
     auto controls = top;
 
     const int audioW = compactWidth ? 112 : 136;       // system
+    const int linkW = compactWidth ? 86 : 104;         // sync
     const int refreshW = compactWidth ? 104 : 130;     // system
     const int recW = compactWidth ? 72 : 92;           // recording
     const int recSettingsW = compactWidth ? 96 : 118;  // recording
     const int saveW = compactWidth ? 86 : 110;         // config
     const int loadW = compactWidth ? 86 : 110;         // config
     const int logsW = compactWidth ? 64 : 90;          // utility
+    const int statusBoxW = compactWidth ? 210 : 260;   // separated Audio/OSC/Link lines
     const int groupGap = compactWidth ? 4 : 8;
     const int controlVMargin = compactHeight ? 6 : 8;
 
@@ -1091,8 +1274,9 @@ void HostEngine::resized()
     recordSettingsButton.setBounds(controls.removeFromLeft(recSettingsW).reduced(2, controlVMargin));
     controls.removeFromLeft(groupGap);
 
-    // Group 3: audio + config
+    // Group 3: audio + sync + config
     audioSettingsButton.setBounds(controls.removeFromLeft(audioW).reduced(2, controlVMargin));
+    linkButton.setBounds(controls.removeFromLeft(linkW).reduced(2, controlVMargin));
     controls.removeFromLeft(groupGap);
     loadConfigButton.setBounds(controls.removeFromLeft(loadW).reduced(2, controlVMargin));
     saveConfigButton.setBounds(controls.removeFromLeft(saveW).reduced(2, controlVMargin));
@@ -1100,6 +1284,13 @@ void HostEngine::resized()
     // Group 4: utility on right edge
     auto rightControls = controls.removeFromRight(logsW);
     logDrawerButton.setBounds(rightControls.reduced(2, controlVMargin));
+    auto statusBoxArea = controls.removeFromRight(statusBoxW).reduced(2, controlVMargin);
+    topRightStatusBox.setBounds(statusBoxArea);
+    auto statusInner = statusBoxArea.reduced(8, compactHeight ? 3 : 4);
+    const auto rowH = juce::jmax(10, statusInner.getHeight() / 3);
+    audioStateLabel.setBounds(statusInner.removeFromTop(rowH));
+    oscStateLabel.setBounds(statusInner.removeFromTop(rowH));
+    linkStateLabel.setBounds(statusInner);
 
     uiStatus.setBounds(controls.reduced(8, 8));
 
@@ -2975,6 +3166,9 @@ void HostEngine::handleTempo(const juce::OSCMessage& m)
         return;
 
     bpm = juce::jlimit(20.0f, 300.0f, bpm);
+    transportTempoBpm.store(bpm, std::memory_order_relaxed);
+    pushTempoToLink(bpm);
+    refreshTopRightStatusBox();
 
     const auto nowMs = juce::Time::getMillisecondCounterHiRes();
     const auto changedEnough = std::abs(bpm - lastTempoUiBpm) >= 0.1f;

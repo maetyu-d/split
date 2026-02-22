@@ -6,6 +6,8 @@
 #include <cstdint>
 #include <vector>
 
+class AbletonLinkBackend;
+
 class HostEngine final : public juce::Component,
                          private juce::OSCReceiver,
                          private juce::OSCReceiver::Listener<juce::OSCReceiver::MessageLoopCallback>,
@@ -157,6 +159,10 @@ private:
     void openRecordingSettingsDialog();
     bool isRecordingActive();
     void updateAudioHeartbeatUi();
+    void refreshTopRightStatusBox();
+    void setLinkEnabled(bool shouldEnable);
+    void pushTempoToLink(double bpm);
+    double pullTempoFromLink();
 
     juce::AudioDeviceManager deviceManager;
     juce::AudioPluginFormatManager formatManager;
@@ -166,14 +172,19 @@ private:
     juce::File deadMansPedalFile;
     juce::File pluginCacheFile;
 
-    juce::TextButton refreshPluginsButton { "Refresh Plugins" };
+    juce::TextButton refreshPluginsButton { "Reload Plugins" };
     juce::TextButton audioSettingsButton { "Audio Settings" };
+    juce::TextButton linkButton { "Link N/A" };
     juce::TextButton recordButton { "Record" };
     juce::TextButton recordSettingsButton { "Rec Settings" };
-    juce::TextButton saveConfigButton { "Save Config" };
-    juce::TextButton loadConfigButton { "Load Config" };
+    juce::TextButton saveConfigButton { "Save" };
+    juce::TextButton loadConfigButton { "Load" };
     juce::TextButton logDrawerButton { "Logs" };
     juce::Label uiStatus;
+    juce::Label topRightStatusBox;
+    juce::Label audioStateLabel;
+    juce::Label oscStateLabel;
+    juce::Label linkStateLabel;
     juce::TextEditor log;
     std::unique_ptr<LogWindow> logWindow;
     juce::Label masterHeaderLabel;
@@ -224,6 +235,7 @@ private:
     juce::SpinLock scheduledLock;
     juce::CriticalSection logLock;
     bool logIncomingOsc = false;
+    bool oscConnected = false;
     std::array<Lane, numLanes> lanes;
     std::array<std::atomic<uint32_t>, numLanes> laneOscActiveUntilMs {};
     juce::AbstractFifo rtEventFifo { rtEventFifoCapacity };
@@ -243,8 +255,12 @@ private:
     uint32_t lastHeartbeatUiMs = 0;
     uint32_t lastAudioRestartAttemptMs = 0;
     bool lastAudioRunningState = true;
+    bool linkAvailable = false;
+    bool linkEnabled = false;
     float lastTempoUiBpm = -1.0f;
+    std::atomic<float> transportTempoBpm { 120.0f };
     double lastTempoUiMs = 0.0;
+    std::unique_ptr<AbletonLinkBackend> linkBackend;
 
     std::unique_ptr<juce::AudioFormatWriter::ThreadedWriter> threadedWriter;
     juce::AudioBuffer<float> recordingStereoScratch;
