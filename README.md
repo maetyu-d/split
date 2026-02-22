@@ -15,7 +15,7 @@ The Pattern IDE utilises the split music programming language that's largely a c
 
 The Plugin Host loads VST3 and/or AU plugins (instruments and effects) in any combination, and i) receives OSC messages on port 9001, ii) converts OSC to MIDI and routes it to the relevant plugins based on a lane system, and iii) provides fundamental mixing and recording facilities. 
 
-The two applications are intented to be used together, but you could use one and build your own replacement for the other.
+The two applications are intented to be used together, but you could use one and build your own replacement for the other. The latest version supports Ableton Link.
 
 
 ### Pattern IDE
