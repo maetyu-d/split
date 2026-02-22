@@ -19,16 +19,23 @@ The two applications are intented to be used together, but you could use one and
 
 
 ### Pattern IDE
-- Split-style pattern language (`trigger`, `note`, `mod`, `break`, `drill`, mutations, sections)
-- Teletype-style mode (`language teletype`) with scripts, `RUN`, math/logic, pattern memory, metro/clock
+
+Features:
+
+- Supports and by default uses the split music pattern language (`trigger`, `note`, `mod`, `break`, `drill`, mutations, sections), created especially for this purpose.
+- Has an additional Monome TeleType-style language mode (`language teletype`) with scripts, `RUN`, math/logic, pattern memory, metro/clock.
 - OSC monitor + log view toggle
 - Transport display (bar/beat/step)
-- Deterministic timeline panel (hideable, draggable splitters)
+- Deterministic timeline panel (hideable)
 - Script save/load
+- Supports Ableton Link to sync with other software.
 
 ### Plugin Host
+
+Features:
+
 - 10 track lanes + master lane
-- AU/VST3 plugin scanning and loading (instruments and effects)
+- AU and VST3 plugin scanning and loading (instruments and effects)
 - Per-lane hidden/expandable FX chain + master FX chain
 - Ableton Link toggle (`Link` button; SDK-dependent)
 - Lane gain/pan/mute/solo + master gain
