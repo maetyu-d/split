@@ -1,11 +1,11 @@
-# Split - Two-Part, OSC-Connected Music Programming IDE and Plugin Host
+# split - Two-Part, OSC-Connected Music Programming IDE and Plugin Host
 
-Split consists of the following two applications, developed in JUCE, that work together over OSC:
+![](https://github.com/maetyu-d/split/blob/main/Screenshot%202026-02-22%20at%2013.28.50.png)
+
+split consists of the following two applications, developed in JUCE, that work together over OSC:
 
 - `Pattern IDE` (split (or TT) language + live transport + timeline view)
 - `Plugin Host` (AU and VST3 lane host + mixer + recording)
-
-![](https://github.com/maetyu-d/split/blob/main/Screenshot%202026-02-22%20at%2013.28.50.png)
 
 
 ## What It Does
