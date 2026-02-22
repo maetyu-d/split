@@ -261,6 +261,7 @@ bool preparePluginInstance(juce::AudioPluginInstance& plugin, bool isInstrument,
 
 constexpr int kNumFxSlots = 3;
 constexpr int kNumMasterFxSlots = 6;
+constexpr int kHostProcessChannels = 16;
 
 int fxUiIndex(int laneIndex, int slotIndex)
 {
@@ -981,6 +982,13 @@ void HostEngine::paint(juce::Graphics& g)
     drawTopSep(audioSettingsButton.getX() - 4);
     drawTopSep(logDrawerButton.getX() - 8);
 
+    g.setColour(juce::Colour::fromRGB(170, 182, 200).withAlpha(0.42f));
+    g.setFont(juce::Font(juce::FontOptions("Menlo", 11.0f, juce::Font::plain)));
+    g.drawText("by matd.space",
+               topBar.toNearestInt().removeFromRight(126).reduced(4, 0),
+               juce::Justification::centredRight,
+               false);
+
     g.setColour(juce::Colour::fromRGB(18, 22, 29).withAlpha(0.42f));
     g.fillRoundedRectangle(bounds.toFloat(), 8.0f);
     g.setColour(juce::Colour::fromRGB(53, 61, 74).withAlpha(0.55f));
@@ -1312,7 +1320,7 @@ void HostEngine::audioDeviceIOCallbackWithContext(const float* const*,
 
         juce::MidiBuffer fxMidi;
         for (auto& fx : lane.fxPlugins)
-            if (fx != nullptr)
+            if (fx != nullptr && ! fx->isSuspended())
                 fx->processBlock(laneBlock, fxMidi);
 
         const auto clampedPan = juce::jlimit(-1.0f, 1.0f, pan);
@@ -1332,13 +1340,14 @@ void HostEngine::audioDeviceIOCallbackWithContext(const float* const*,
         juce::AudioBuffer<float> masterBlock(masterTempBuffer.getArrayOfWritePointers(),
                                              masterTempBuffer.getNumChannels(),
                                              numSamples);
+        masterBlock.clear();
         for (int ch = 0; ch < numOutputChannels; ++ch)
             if (ch < masterBlock.getNumChannels())
                 masterBlock.copyFrom(ch, 0, outputBuffer, ch, 0, numSamples);
 
         juce::MidiBuffer masterFxMidi;
         for (auto& fx : masterFxPlugins)
-            if (fx != nullptr)
+            if (fx != nullptr && ! fx->isSuspended())
                 fx->processBlock(masterBlock, masterFxMidi);
 
         for (int ch = 0; ch < numOutputChannels; ++ch)
@@ -1416,7 +1425,7 @@ void HostEngine::audioDeviceAboutToStart(juce::AudioIODevice* device)
     const auto namedOutputChannels = device->getOutputChannelNames().size();
     const auto outputChannels = juce::jmax(2, juce::jmax(activeOutputChannels, namedOutputChannels));
     const auto preallocSamples = juce::jmax(expectedBlockSize * 4, 4096);
-    const auto hostProcessChannels = 2;
+    const auto hostProcessChannels = kHostProcessChannels;
     appendLog("Audio device start: sr=" + juce::String(sampleRate, 1)
               + " block=" + juce::String(expectedBlockSize)
               + " activeOut=" + juce::String(activeOutputChannels)
@@ -1444,6 +1453,7 @@ void HostEngine::audioDeviceAboutToStart(juce::AudioIODevice* device)
                 const auto busesOk = preparePluginInstance(*fx, false, sampleRate, expectedBlockSize);
                 appendLog("Reinit lane FX: " + pluginIoSummary(*fx)
                           + (busesOk ? "" : " [bus fallback]"));
+                fx->suspendProcessing(! busesOk);
             }
     }
 
@@ -1454,6 +1464,7 @@ void HostEngine::audioDeviceAboutToStart(juce::AudioIODevice* device)
             const auto busesOk = preparePluginInstance(*fx, false, sampleRate, expectedBlockSize);
             appendLog("Reinit master FX: " + pluginIoSummary(*fx)
                       + (busesOk ? "" : " [bus fallback]"));
+            fx->suspendProcessing(! busesOk);
         }
 }
 
@@ -2348,6 +2359,12 @@ bool HostEngine::loadEffectDescriptionIntoLaneSlot(int laneIndex, int slotIndex,
             instance->setStateInformation(pluginState.getData(), static_cast<int> (pluginState.getSize()));
     }
     const auto busesOk = preparePluginInstance(*instance, false, sampleRate, expectedBlockSize);
+    if (! busesOk)
+    {
+        uiStatus.setText("FX bus layout unsupported", juce::dontSendNotification);
+        appendLog("FX load rejected (unsupported bus layout): " + desc.name);
+        return false;
+    }
     const auto ioSummary = pluginIoSummary(*instance);
 
     {
@@ -2426,6 +2443,12 @@ bool HostEngine::loadMasterEffectDescriptionIntoSlot(int slotIndex, const juce::
             instance->setStateInformation(pluginState.getData(), static_cast<int> (pluginState.getSize()));
     }
     const auto busesOk = preparePluginInstance(*instance, false, sampleRate, expectedBlockSize);
+    if (! busesOk)
+    {
+        uiStatus.setText("Master FX bus layout unsupported", juce::dontSendNotification);
+        appendLog("Master FX load rejected (unsupported bus layout): " + desc.name);
+        return false;
+    }
     const auto ioSummary = pluginIoSummary(*instance);
 
     const juce::ScopedLock audioScope(deviceManager.getAudioCallbackLock());

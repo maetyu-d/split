@@ -229,7 +229,7 @@ public:
         codeEditor->setTabSize(4, true);
         codeEditor->setLineNumbersShown(true);
         codeEditor->loadContent(
-            "# Split Language v0 (break-focused)\n"
+            "# Split Language v0\n"
             "tempo 172\n"
             "steps 16\n"
             "swing 0.14\n"
@@ -476,6 +476,13 @@ public:
         g.drawRoundedRectangle(topBar.reduced(0.5f), 6.0f, 1.0f);
         g.setColour(juce::Colour::fromRGB(95, 108, 128).withAlpha(0.18f));
         g.drawLine(topBar.getX() + 8.0f, topBar.getY() + 1.0f, topBar.getRight() - 8.0f, topBar.getY() + 1.0f, 1.0f);
+
+        g.setColour(juce::Colour::fromRGB(170, 182, 200).withAlpha(0.42f));
+        g.setFont(juce::Font(juce::FontOptions("Menlo", 11.0f, juce::Font::plain)));
+        g.drawText("by matd.space",
+                   topBar.toNearestInt().removeFromRight(126).reduced(4, 0),
+                   juce::Justification::centredRight,
+                   false);
 
         g.setColour(juce::Colour::fromRGB(18, 22, 29).withAlpha(0.42f));
         g.fillRoundedRectangle(bounds.toFloat(), 8.0f);
