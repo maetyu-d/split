@@ -11,7 +11,7 @@ They're tested on Mac OS 13.7.7 and there's a brief demo [HERE](https://youtu.be
 
 ## What It Does
 
-The Pattern IDE utilises the split music programming language that's largely a cross between Tidal and SuperCollider, and intended to simplify the creation of breakbeats and other ryhthmically interesting musical features in song-like structures. It produces no audio of its own and instead outputs to OSC on port 9001. As a bonus, most of the Monome TeleType language is supported as an alternative mode. 
+The Pattern IDE utilises the split music programming language that's mostly a cross between Tidal and SuperCollider, and intended to simplify the creation of breakbeats and other ryhthmically interesting musical features in song-like structures (I discovered that, at slower tempos, breakbeat patterns combined with the more percussive end of orchestral VSTs tend to create the classic sound of Swordfishtrombones). It produces no audio of its own and instead outputs to OSC on port 9001. As a bonus, most of the Monome TeleType language is supported as an alternative mode (mainly because I have a hardware TeleType, and I thought it might be useful to practice away from the hardware). 
 
 The Plugin Host loads VST3 and/or AU plugins (instruments and effects) in any combination, and i) receives OSC messages on port 9001, ii) converts OSC to MIDI and routes it to the relevant plugins based on a lane system, and iii) provides fundamental mixing and recording facilities. 
 
