@@ -2,18 +2,46 @@ tempo 182
 steps 14
 swing 0.06
 laneSteps 0 14
-laneSteps 1 7
+laneSteps 1 14
+laneSteps 2 14
+laneSteps 3 14
+laneSteps 4 14
 
-break 0 0 k-hs-k-sh-k-s- 1.0 1.0 every 1
-break 0 0 --g--g--h--g-- 0.8 0.9 every 1
+# A section: main 7/8 drive
+note 0 0 [36 - - 42 36 - 38 42 36 - 38 42 36 -] 0.96 0.07 kickA 1.0 notEvery 4
+note 0 0 [- 42 38 - - 42 - 42 - 42 - 42 - 38] 0.82 0.05 snareA 0.95 notEvery 4
+note 0 0 [- - 37 - - 37 - - - - 37 - - -] 0.62 0.04 ghostA 0.9 notEvery 4
 
-drill 3 0 snare 8 0.95 0.9 every 2
-drill 10 0 snare 11 0.9 0.85 every 2
-drill 13 0 snare 14 0.85 0.7 every 4
+# B section: every 4th cycle gets machine-gun pressure
+note 0 0 [36 42 38 42 36 42 38 42 36 42 38 42 36 42] 0.78 0.035 rush 0.9 every 4 notEvery 8
+note 10 0 [38 38 38 38] 0.84 0.025 snareB 0.9 every 4
 
-note 0 1 [48 - 55 - 51 -] 0.75 0.25 grit 1.0 every 1
+# C section: every 8th cycle drops to stark accents
+note 0 0 [36 - - - - - - 42 - - - - 38 -] 0.95 0.1 sparse 1.0 every 8
+note 7 0 [38 38 38 38 38 38] 0.72 0.02 burst 0.8 every 8
+
+# Track 2 rhythmic counter layer
+note 0 1 [42 - 46 - 49 46 42 - 46 - 49 46 - -] 0.66 0.045 perc2A 0.95 notEvery 4
+note 0 1 [42 46 49 46 42 46 49 46 42 46 49 46 42 38] 0.58 0.03 perc2B 0.9 every 4
+
+# Track 3 bass: changing root/pulse by section
+note 0 2 [36 - - 43 - - 41 - 38 - - 43 - -] 0.78 0.33 bassA 1.0 notEvery 4
+note 0 2 [34 - 36 - 38 - 41 - 43 - 41 - 38 -] 0.72 0.25 bassB 0.95 every 4 notEvery 8
+note 0 2 [29 - - - 36 - - - 38 - - - 34 -] 0.86 0.5 bassC 1.0 every 8
+
+# Track 4-5 melodic: motif then inversion
+note 0 3 [60 - 63 - 67 - 70 - 67 - 63 - 60 -] 0.62 0.17 leadA 0.9 notEvery 4
+note 0 3 [67 - 70 - 74 - 77 - 74 - 70 - 67 -] 0.58 0.14 leadB 0.88 every 4
+
+note 0 4 [72 - - 74 - 77 - - 79 - - 81 - -] 0.5 0.13 leadHiA 0.85 notEvery 8
+note 0 4 [79 - - 81 - 84 - - 86 - - 88 - -] 0.45 0.1 leadHiB 0.8 every 8
+
 mod 0 0 lane.gain 1.1 0.0 1.0 every 1
 mod 7 0 lane.gain 0.9 0.0 1.0 every 1
+mod 0 3 lane.pan -0.28 0.0 1.0 every 1
+mod 7 3 lane.pan 0.28 0.0 1.0 every 1
+mod 0 4 lane.pan 0.34 0.0 1.0 every 1
+mod 7 4 lane.pan -0.34 0.0 1.0 every 1
 
-stutter 0 snare 4 every 2 0.8
 scramble 0 every 8 0.55
+stutter 0 snareA 3 every 4 0.5

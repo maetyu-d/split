@@ -3,18 +3,46 @@ steps 16
 swing 0.12
 laneSteps 0 16
 laneSteps 1 16
+laneSteps 2 16
+laneSteps 3 16
+laneSteps 4 16
 
-break 0 0 k-hs-k-hk-hs-k- 1.0 1.0 every 1
-break 0 0 --g---h---g---h- 0.9 0.85 every 1
+# Phase A (cycles 1-3): core groove
+note 0 0 [36 - - - 36 - - - 36 - - - 36 - - -] 0.95 0.08 kick 1.0 notEvery 4
+note 0 0 [- - 38 - - - 38 - - - 38 - - - 38 -] 0.88 0.08 snare 1.0 notEvery 4
+note 0 0 [- 42 - 42 - 42 - 42 - 42 - 42 - 42 - 42] 0.62 0.03 hat 0.95 notEvery 4
 
-drill 7 0 snare 5 0.9 0.7 every 2
-drill 15 0 snare 7 0.85 0.6 every 4
+# Phase B (every 4th cycle): denser fills
+note 0 0 [36 - 36 - 36 - 38 - 36 - 36 - 38 - 36 -] 0.9 0.07 kickB 1.0 every 4 notEvery 8
+note 0 0 [- 42 38 42 - 42 38 42 - 42 38 42 - 42 38 42] 0.8 0.05 snareB 1.0 every 4 notEvery 8
+note 4 0 [38 38 38 38] 0.82 0.03 roll 0.9 every 4
 
-note 0 1 [60 - 63 - 67 - 70 -] 0.8 0.25 bass 1.0 every 1
-note 8 1 [58 - 62 - 65 - 69 -] 0.8 0.25 bass 1.0 every 1
+# Phase C (every 8th cycle): breakdown/re-entry
+note 0 0 [36 - - - - - 38 - - - - - 36 - - -] 0.92 0.1 breakKick 1.0 every 8
+note 8 0 [38 38 38 38 38 38 38 38] 0.74 0.025 breakSnare 0.8 every 8
 
-mod 0 1 lane.pan -0.3 0.0 1.0 every 1
-mod 8 1 lane.pan 0.3 0.0 1.0 every 1
+# Track 2 rhythm: alt hats/chops per phase
+note 0 1 [42 - 46 - 49 - 46 - 42 - 51 - 49 - 46 -] 0.66 0.06 perc2 0.95 notEvery 4
+note 0 1 [42 46 49 46 42 46 49 51 49 46 42 46 49 46 42 38] 0.56 0.035 chop2 0.85 every 4
 
-stutter 0 snare 3 every 2 0.7
+# Track 3 bass: phrase variants over time
+note 0 2 [36 - - 36 - 38 - - 41 - - 43 - - 38 -] 0.82 0.32 bassA 1.0 notEvery 4
+note 0 2 [36 - 36 - 41 - 38 - 43 - 41 - 38 - 36 -] 0.8 0.24 bassB 1.0 every 4 notEvery 8
+note 0 2 [29 - - - 36 - - - 41 - - - 36 - - -] 0.88 0.5 bassC 1.0 every 8
+
+# Track 4 melodic: call/response form
+note 0 3 [60 - 63 - 67 - 70 - 67 - 63 - 60 - 58 -] 0.7 0.2 leadA 0.95 notEvery 4
+note 0 3 [67 - 70 - 74 - 77 - 74 - 70 - 67 - 65 -] 0.64 0.16 leadB 0.9 every 4 notEvery 8
+note 0 3 [58 - - - 62 - - - 65 - - - 69 - - -] 0.72 0.35 leadC 0.95 every 8
+
+# Track 5 melodic: upper motif that blooms in B/C
+note 0 4 [72 - - 74 - - 75 - 77 - - 79 - - 82 -] 0.54 0.14 leadHiA 0.9 notEvery 4
+note 0 4 [79 - 82 - 84 - 86 - 84 - 82 - 79 - 77 -] 0.5 0.11 leadHiB 0.88 every 4
+
+mod 0 3 lane.pan -0.30 0.0 1.0 every 1
+mod 8 3 lane.pan 0.30 0.0 1.0 every 1
+mod 0 4 lane.pan 0.35 0.0 1.0 every 1
+mod 8 4 lane.pan -0.35 0.0 1.0 every 1
+
 rotate 0 1 every 4 0.6
+stutter 0 snare 4 every 8 0.5

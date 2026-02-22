@@ -379,6 +379,9 @@ HostEngine::HostEngine()
 
     deadMansPedalFile = juce::File::getSpecialLocation(juce::File::tempDirectory)
                             .getChildFile("split-audio-deadmanspedal.txt");
+    pluginCacheFile = juce::File::getSpecialLocation(juce::File::userApplicationDataDirectory)
+                          .getChildFile("SplitAudioProgramming")
+                          .getChildFile("plugin-scan-cache.xml");
 
     for (auto& lane : lanes)
     {
@@ -395,18 +398,53 @@ HostEngine::HostEngine()
 
     auto styleTopButton = [] (juce::TextButton& b)
     {
-        b.setColour(juce::TextButton::buttonColourId, juce::Colour::fromRGB(45, 50, 58));
-        b.setColour(juce::TextButton::buttonOnColourId, juce::Colour::fromRGB(62, 71, 84));
-        b.setColour(juce::TextButton::textColourOffId, juce::Colour::fromRGB(225, 228, 234));
-        b.setColour(juce::TextButton::textColourOnId, juce::Colour::fromRGB(239, 242, 248));
+        b.setColour(juce::TextButton::buttonColourId, juce::Colour::fromRGB(43, 49, 58));
+        b.setColour(juce::TextButton::buttonOnColourId, juce::Colour::fromRGB(59, 68, 82));
+        b.setColour(juce::TextButton::textColourOffId, juce::Colour::fromRGB(225, 230, 238));
+        b.setColour(juce::TextButton::textColourOnId, juce::Colour::fromRGB(243, 247, 252));
     };
 
     addAndMakeVisible(refreshPluginsButton);
     styleTopButton(refreshPluginsButton);
     refreshPluginsButton.onClick = [this]
     {
-        refreshPluginCatalog();
+        refreshPluginCatalog(true);
     };
+
+    addAndMakeVisible(audioSettingsButton);
+    styleTopButton(audioSettingsButton);
+    audioSettingsButton.onClick = [this]
+    {
+        juce::DialogWindow::LaunchOptions options;
+        options.dialogTitle = "Audio Settings";
+        options.dialogBackgroundColour = juce::Colour::fromRGB(24, 28, 36);
+        options.escapeKeyTriggersCloseButton = true;
+        options.useNativeTitleBar = true;
+        options.resizable = false;
+
+        auto* selector = new juce::AudioDeviceSelectorComponent(deviceManager,
+                                                                0, 2,   // min/max inputs
+                                                                0, 2,   // min/max outputs
+                                                                false,  // hide midi input options
+                                                                false,  // hide midi output selector
+                                                                true,   // show channels as stereo pairs
+                                                                false); // hide advanced options
+        selector->setSize(560, 420);
+        options.content.setOwned(selector);
+        options.componentToCentreAround = this;
+        options.launchAsync();
+    };
+
+    addAndMakeVisible(recordButton);
+    recordButton.setColour(juce::TextButton::buttonColourId, juce::Colour::fromRGB(74, 46, 46));
+    recordButton.setColour(juce::TextButton::buttonOnColourId, juce::Colour::fromRGB(138, 52, 52));
+    recordButton.setColour(juce::TextButton::textColourOffId, juce::Colour::fromRGB(244, 210, 210));
+    recordButton.setColour(juce::TextButton::textColourOnId, juce::Colour::fromRGB(255, 234, 234));
+    recordButton.onClick = [this] { toggleRecordingFromUi(); };
+
+    addAndMakeVisible(recordSettingsButton);
+    styleTopButton(recordSettingsButton);
+    recordSettingsButton.onClick = [this] { openRecordingSettingsDialog(); };
 
     addAndMakeVisible(saveConfigButton);
     styleTopButton(saveConfigButton);
@@ -448,7 +486,10 @@ HostEngine::HostEngine()
 
     addAndMakeVisible(uiStatus);
     uiStatus.setJustificationType(juce::Justification::centredLeft);
-    uiStatus.setColour(juce::Label::textColourId, juce::Colour::fromRGB(216, 220, 228));
+    uiStatus.setColour(juce::Label::textColourId, juce::Colour::fromRGB(216, 223, 234));
+    uiStatus.setColour(juce::Label::backgroundColourId, juce::Colour::fromRGB(27, 33, 42).withAlpha(0.72f));
+    uiStatus.setColour(juce::Label::outlineColourId, juce::Colour::fromRGB(66, 78, 96).withAlpha(0.55f));
+    uiStatus.setOpaque(true);
     uiStatus.setText("Ready. Click Refresh Plugins to scan AU/VST3.", juce::dontSendNotification);
 
     addAndMakeVisible(masterHeaderLabel);
@@ -775,6 +816,8 @@ HostEngine::HostEngine()
     syncAllLaneRows();
 
     writerThread.startThread();
+    recordingTargetFile = juce::File::getSpecialLocation(juce::File::userDocumentsDirectory)
+                              .getNonexistentChildFile("split-audio-take", ".wav");
 
     const auto initError = deviceManager.initialiseWithDefaultDevices(0, 2);
     if (initError.isNotEmpty())
@@ -806,6 +849,7 @@ HostEngine::HostEngine()
                   + " block=" + juce::String(dev->getCurrentBufferSizeSamples())
                   + " activeOut=" + juce::String(dev->getActiveOutputChannels().countNumberOfSetBits())
                   + " namedOut=" + juce::String(dev->getOutputChannelNames().size()));
+        recordingSampleRate = dev->getCurrentSampleRate();
     }
     else
     {
@@ -819,6 +863,7 @@ HostEngine::HostEngine()
     addListener(this);
     startTimerHz(20);
 
+    refreshPluginCatalog(false);
     appendLog("Listening OSC on port " + juce::String(oscproto::defaultPort));
 }
 
@@ -861,6 +906,15 @@ void HostEngine::timerCallback()
         laneOscIndicators[static_cast<size_t> (i)].setAlpha(active ? 1.0f : 0.28f);
     }
 
+    for (int ch = 0; ch < 2; ++ch)
+    {
+        const auto blockPeak = masterMeterPeaks[static_cast<size_t> (ch)].exchange(0.0f, std::memory_order_relaxed);
+        auto& level = masterMeterLevels[static_cast<size_t> (ch)];
+        level = juce::jmax(blockPeak, level * 0.82f);
+        level = juce::jlimit(0.0f, 1.0f, level);
+    }
+    if (! masterMeterBounds.isEmpty())
+        repaint(masterMeterBounds.expanded(4));
 }
 
 void HostEngine::updateAudioHeartbeatUi()
@@ -909,17 +963,93 @@ void HostEngine::paint(juce::Graphics& g)
 
     auto bounds = getLocalBounds().reduced(8);
     const auto topBar = bounds.removeFromTop(56);
-    g.setColour(juce::Colour::fromRGB(34, 39, 48));
+    g.setColour(juce::Colour::fromRGB(33, 38, 47));
     g.fillRoundedRectangle(topBar.toFloat(), 6.0f);
-    g.setColour(juce::Colour::fromRGB(52, 58, 69).withAlpha(0.65f));
+    g.setColour(juce::Colour::fromRGB(56, 64, 77).withAlpha(0.72f));
     g.drawRoundedRectangle(topBar.toFloat().reduced(0.5f), 6.0f, 1.0f);
+    g.setColour(juce::Colour::fromRGB(95, 108, 128).withAlpha(0.18f));
+    g.drawLine(static_cast<float> (topBar.getX() + 8), static_cast<float> (topBar.getY() + 1),
+               static_cast<float> (topBar.getRight() - 8), static_cast<float> (topBar.getY() + 1), 1.0f);
+
+    auto drawTopSep = [&] (int x)
+    {
+        g.setColour(juce::Colour::fromRGB(86, 97, 116).withAlpha(0.45f));
+        g.drawLine(static_cast<float> (x), static_cast<float> (topBar.getY() + 8),
+                   static_cast<float> (x), static_cast<float> (topBar.getBottom() - 8), 1.0f);
+    };
+    drawTopSep(recordButton.getX() - 4);
+    drawTopSep(audioSettingsButton.getX() - 4);
+    drawTopSep(logDrawerButton.getX() - 8);
+
+    g.setColour(juce::Colour::fromRGB(18, 22, 29).withAlpha(0.42f));
+    g.fillRoundedRectangle(bounds.toFloat(), 8.0f);
+    g.setColour(juce::Colour::fromRGB(53, 61, 74).withAlpha(0.55f));
+    g.drawRoundedRectangle(bounds.toFloat().reduced(0.5f), 8.0f, 1.0f);
 
     const auto masterArea = masterHeaderLabel.getBounds()
                                 .getUnion(masterFxExpandButton.getBounds())
                                 .getUnion(masterGainSlider.getBounds())
+                                .getUnion(masterMeterBounds)
                                 .expanded(4, 4);
     g.setColour(juce::Colour::fromRGB(64, 58, 44).withAlpha(0.18f));
     g.fillRoundedRectangle(masterArea.toFloat(), 7.0f);
+
+}
+
+void HostEngine::paintOverChildren(juce::Graphics& g)
+{
+    if (masterMeterBounds.isEmpty())
+        return;
+
+    const auto fullMeterRect = masterMeterBounds;
+    g.setColour(juce::Colour::fromRGB(24, 28, 34).withAlpha(0.9f));
+    g.fillRoundedRectangle(fullMeterRect.toFloat(), 2.0f);
+    g.setColour(juce::Colour::fromRGB(74, 86, 104).withAlpha(0.85f));
+    g.drawRoundedRectangle(fullMeterRect.toFloat().reduced(0.5f), 2.0f, 1.0f);
+
+    auto meterRect = fullMeterRect;
+    auto leftBar = meterRect.removeFromLeft(meterRect.getWidth() / 2).reduced(1, 1);
+    auto rightBar = meterRect.reduced(1, 1);
+
+    auto drawBar = [&] (juce::Rectangle<int> r, float level)
+    {
+        const auto lv = juce::jlimit(0.0f, 1.0f, level);
+        const auto fillH = static_cast<int> (std::round(lv * static_cast<float> (r.getHeight())));
+        if (fillH <= 0)
+            return;
+        auto fill = r.withTrimmedTop(juce::jmax(0, r.getHeight() - fillH));
+        auto grad = juce::ColourGradient(juce::Colour::fromRGB(94, 204, 117),
+                                         static_cast<float> (fill.getX()),
+                                         static_cast<float> (fill.getBottom()),
+                                         juce::Colour::fromRGB(235, 185, 94),
+                                         static_cast<float> (fill.getX()),
+                                         static_cast<float> (fill.getY()),
+                                         false);
+        grad.addColour(0.88, juce::Colour::fromRGB(228, 102, 92));
+        g.setGradientFill(grad);
+        g.fillRoundedRectangle(fill.toFloat(), 1.2f);
+    };
+    drawBar(leftBar, masterMeterLevels[0]);
+    drawBar(rightBar, masterMeterLevels[1]);
+
+    // Subtle 0 dB reference (top of digital full-scale meter).
+    const auto zeroDbY = fullMeterRect.getY() + 1;
+    g.setColour(juce::Colour::fromRGB(214, 188, 115).withAlpha(0.42f));
+    g.drawLine(static_cast<float> (fullMeterRect.getX() + 1),
+               static_cast<float> (zeroDbY),
+               static_cast<float> (fullMeterRect.getRight() - 1),
+               static_cast<float> (zeroDbY),
+               1.0f);
+
+    const auto minus3Linear = std::pow(10.0f, -3.0f / 20.0f); // ~0.7079
+    const auto innerH = juce::jmax(1, fullMeterRect.getHeight() - 2);
+    const auto minus3Y = fullMeterRect.getBottom() - 1 - static_cast<int> (std::round(minus3Linear * static_cast<float> (innerH)));
+    g.setColour(juce::Colour::fromRGB(148, 184, 150).withAlpha(0.28f));
+    g.drawLine(static_cast<float> (fullMeterRect.getX() + 1),
+               static_cast<float> (minus3Y),
+               static_cast<float> (fullMeterRect.getRight() - 1),
+               static_cast<float> (minus3Y),
+               1.0f);
 }
 
 void HostEngine::resized()
@@ -934,16 +1064,36 @@ void HostEngine::resized()
     auto top = area.removeFromTop(topBarHeight);
     auto controls = top;
 
-    const int refreshW = compactWidth ? 104 : 130;
-    const int saveW = compactWidth ? 86 : 110;
-    const int loadW = compactWidth ? 86 : 110;
-    const int logsW = compactWidth ? 64 : 90;
+    const int audioW = compactWidth ? 112 : 136;       // system
+    const int refreshW = compactWidth ? 104 : 130;     // system
+    const int recW = compactWidth ? 72 : 92;           // recording
+    const int recSettingsW = compactWidth ? 96 : 118;  // recording
+    const int saveW = compactWidth ? 86 : 110;         // config
+    const int loadW = compactWidth ? 86 : 110;         // config
+    const int logsW = compactWidth ? 64 : 90;          // utility
+    const int groupGap = compactWidth ? 4 : 8;
     const int controlVMargin = compactHeight ? 6 : 8;
+
+    // Group 1: system
     refreshPluginsButton.setBounds(controls.removeFromLeft(refreshW).reduced(2, controlVMargin));
-    saveConfigButton.setBounds(controls.removeFromLeft(saveW).reduced(2, controlVMargin));
+    controls.removeFromLeft(groupGap);
+
+    // Group 2: recording
+    recordButton.setBounds(controls.removeFromLeft(recW).reduced(2, controlVMargin));
+    recordSettingsButton.setBounds(controls.removeFromLeft(recSettingsW).reduced(2, controlVMargin));
+    controls.removeFromLeft(groupGap);
+
+    // Group 3: audio + config
+    audioSettingsButton.setBounds(controls.removeFromLeft(audioW).reduced(2, controlVMargin));
+    controls.removeFromLeft(groupGap);
     loadConfigButton.setBounds(controls.removeFromLeft(loadW).reduced(2, controlVMargin));
-    logDrawerButton.setBounds(controls.removeFromLeft(logsW).reduced(2, controlVMargin));
-    uiStatus.setBounds(controls.reduced(6, 8));
+    saveConfigButton.setBounds(controls.removeFromLeft(saveW).reduced(2, controlVMargin));
+
+    // Group 4: utility on right edge
+    auto rightControls = controls.removeFromRight(logsW);
+    logDrawerButton.setBounds(rightControls.reduced(2, controlVMargin));
+
+    uiStatus.setBounds(controls.reduced(8, 8));
 
     const auto laneCount = static_cast<int> (lanes.size());
     const auto columnCount = laneCount + 1; // +1 for master lane
@@ -1067,7 +1217,12 @@ void HostEngine::resized()
         }
     }
 
-    masterGainSlider.setBounds(masterCol.reduced(6, 2));
+    auto masterArea = masterCol.reduced(6, 2);
+    masterGainSlider.setBounds(masterArea);
+    const int meterW = 10;
+    masterMeterBounds = masterGainSlider.getBounds()
+                           .withTrimmedLeft(juce::jmax(0, masterGainSlider.getWidth() - meterW))
+                           .reduced(1, 8);
 
     laneHeaderLabel.setBounds({});
     muteHeaderLabel.setBounds({});
@@ -1193,10 +1348,54 @@ void HostEngine::audioDeviceIOCallbackWithContext(const float* const*,
 
     outputBuffer.applyGain(masterGain.load());
 
+    float blockPeakL = 0.0f;
+    float blockPeakR = 0.0f;
+    if (outputBuffer.getNumChannels() > 0)
+    {
+        const auto* l = outputBuffer.getReadPointer(0);
+        for (int i = 0; i < numSamples; ++i)
+            blockPeakL = juce::jmax(blockPeakL, std::abs(l[i]));
+    }
+    if (outputBuffer.getNumChannels() > 1)
+    {
+        const auto* r = outputBuffer.getReadPointer(1);
+        for (int i = 0; i < numSamples; ++i)
+            blockPeakR = juce::jmax(blockPeakR, std::abs(r[i]));
+    }
+    else
+    {
+        blockPeakR = blockPeakL;
+    }
+
+    auto pushPeak = [] (std::atomic<float>& dst, float peak)
+    {
+        auto prev = dst.load(std::memory_order_relaxed);
+        while (peak > prev && ! dst.compare_exchange_weak(prev, peak, std::memory_order_relaxed))
+        {
+        }
+    };
+    pushPeak(masterMeterPeaks[0], blockPeakL);
+    pushPeak(masterMeterPeaks[1], blockPeakR);
+
     if (writerLock.tryEnter())
     {
         if (threadedWriter != nullptr)
-            threadedWriter->write(outputChannelData, numSamples);
+        {
+            if (recordingStereoScratch.getNumChannels() != 2 || recordingStereoScratch.getNumSamples() < numSamples)
+                recordingStereoScratch.setSize(2, numSamples, false, false, true);
+
+            recordingStereoScratch.clear();
+            if (numOutputChannels > 0)
+            {
+                recordingStereoScratch.copyFrom(0, 0, outputBuffer, 0, 0, numSamples);
+                if (numOutputChannels > 1)
+                    recordingStereoScratch.copyFrom(1, 0, outputBuffer, 1, 0, numSamples);
+                else
+                    recordingStereoScratch.copyFrom(1, 0, outputBuffer, 0, 0, numSamples);
+            }
+
+            threadedWriter->write(recordingStereoScratch.getArrayOfReadPointers(), numSamples);
+        }
         writerLock.exit();
     }
 }
@@ -1210,6 +1409,7 @@ void HostEngine::audioDeviceAboutToStart(juce::AudioIODevice* device)
     sampleRate = device->getCurrentSampleRate();
     noteOnDedupeSamples = juce::jmax(16, static_cast<int> (sampleRate * 0.002)); // ~2ms duplicate suppression
     expectedBlockSize = juce::jmax(16, device->getCurrentBufferSizeSamples());
+    recordingStereoScratch.setSize(2, expectedBlockSize, false, false, true);
     audioSampleCounter.store(0, std::memory_order_relaxed);
     std::fill(lastNoteOnSample.begin(), lastNoteOnSample.end(), 0);
     const auto activeOutputChannels = device->getActiveOutputChannels().countNumberOfSetBits();
@@ -1510,8 +1710,12 @@ void HostEngine::saveHostConfigDialog()
 
 void HostEngine::loadHostConfigDialog()
 {
+    auto initial = juce::File::getSpecialLocation(juce::File::userDocumentsDirectory);
+    if (lastLoadedConfigFile.existsAsFile())
+        initial = lastLoadedConfigFile;
+
     configLoadChooser = std::make_unique<juce::FileChooser>("Load Host Config",
-                                                             juce::File::getSpecialLocation(juce::File::userDocumentsDirectory),
+                                                             initial,
                                                              "*.sconfig;*.xml");
     configLoadChooser->launchAsync(juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles,
                                    [this] (const juce::FileChooser& chooser)
@@ -1523,6 +1727,7 @@ void HostEngine::loadHostConfigDialog()
 
                                        if (loadHostConfigFromFile(file))
                                        {
+                                           lastLoadedConfigFile = file;
                                            uiStatus.setText("Loaded config: " + file.getFileName(), juce::dontSendNotification);
                                            appendLog("Loaded host config from " + file.getFullPathName());
                                        }
@@ -1790,8 +1995,132 @@ void HostEngine::rebuildPluginMenus()
     suppressUiCallbacks = false;
 }
 
-void HostEngine::refreshPluginCatalog()
+juce::String HostEngine::computePluginScanSignature() const
 {
+    juce::StringArray entries;
+
+    auto addSearchDirIfExists = [] (juce::StringArray& paths, const juce::File& dir)
+    {
+        if (dir.isDirectory())
+            paths.addIfNotAlreadyThere(dir.getFullPathName());
+    };
+
+    for (auto* format : formatManager.getFormats())
+    {
+        auto discoveredPaths = format->searchPathsForPlugins(format->getDefaultLocationsToSearch(), true, false);
+
+       #if JUCE_MAC
+        if (dynamic_cast<juce::AudioUnitPluginFormat*> (format) != nullptr)
+        {
+            addSearchDirIfExists(discoveredPaths, juce::File("/System/Library/Components"));
+            addSearchDirIfExists(discoveredPaths, juce::File("/Library/Audio/Plug-Ins/Components"));
+            addSearchDirIfExists(discoveredPaths, juce::File::getSpecialLocation(juce::File::userHomeDirectory)
+                                                    .getChildFile("Library/Audio/Plug-Ins/Components"));
+        }
+
+        if (dynamic_cast<juce::VST3PluginFormat*> (format) != nullptr)
+        {
+            addSearchDirIfExists(discoveredPaths, juce::File("/Library/Audio/Plug-Ins/VST3"));
+            addSearchDirIfExists(discoveredPaths, juce::File::getSpecialLocation(juce::File::userHomeDirectory)
+                                                    .getChildFile("Library/Audio/Plug-Ins/VST3"));
+        }
+       #endif
+
+        discoveredPaths.sort(true);
+        for (const auto& path : discoveredPaths)
+        {
+            juce::String line = format->getName() + "|" + path;
+            const juce::File f(path);
+            if (f.exists())
+                line << "|" << juce::String(f.getLastModificationTime().toMilliseconds());
+            entries.add(line);
+        }
+    }
+
+    entries.sort(true);
+    return entries.joinIntoString("\n");
+}
+
+bool HostEngine::loadPluginCatalogCache(const juce::String& signature)
+{
+    if (! pluginCacheFile.existsAsFile())
+        return false;
+
+    auto xml = std::unique_ptr<juce::XmlElement>(juce::XmlDocument::parse(pluginCacheFile));
+    if (xml == nullptr || ! xml->hasTagName("PluginScanCache"))
+        return false;
+
+    const auto cachedSignature = xml->getStringAttribute("signature");
+    if (cachedSignature != signature)
+        return false;
+
+    if (auto* knownPluginsXml = xml->getChildByName("KNOWNPLUGINS"))
+    {
+        knownPluginList.clear();
+        knownPluginList.recreateFromXml(*knownPluginsXml);
+        return knownPluginList.getNumTypes() > 0;
+    }
+
+    return false;
+}
+
+void HostEngine::savePluginCatalogCache(const juce::String& signature)
+{
+    auto knownXml = knownPluginList.createXml();
+    if (knownXml == nullptr)
+        return;
+
+    juce::XmlElement root("PluginScanCache");
+    root.setAttribute("version", 1);
+    root.setAttribute("signature", signature);
+    root.addChildElement(new juce::XmlElement(*knownXml));
+
+    auto parent = pluginCacheFile.getParentDirectory();
+    if (! parent.isDirectory())
+        parent.createDirectory();
+
+    root.writeTo(pluginCacheFile);
+}
+
+void HostEngine::rebuildCatalogFromKnownPlugins()
+{
+    instrumentCatalog.clear();
+    effectCatalog.clear();
+
+    for (const auto& desc : knownPluginList.getTypes())
+    {
+        if (desc.isInstrument)
+            instrumentCatalog.push_back(desc);
+        else
+            effectCatalog.push_back(desc);
+    }
+
+    std::sort(instrumentCatalog.begin(), instrumentCatalog.end(), [] (const auto& a, const auto& b)
+    {
+        return a.name.compareIgnoreCase(b.name) < 0;
+    });
+    std::sort(effectCatalog.begin(), effectCatalog.end(), [] (const auto& a, const auto& b)
+    {
+        return a.name.compareIgnoreCase(b.name) < 0;
+    });
+}
+
+void HostEngine::refreshPluginCatalog(bool forceRescan)
+{
+    const auto signature = computePluginScanSignature();
+    if (! forceRescan && loadPluginCatalogCache(signature))
+    {
+        rebuildCatalogFromKnownPlugins();
+        rebuildPluginMenus();
+        syncAllLaneRows();
+        uiStatus.setText("Plugins: " + juce::String(instrumentCatalog.size()) + " instr, "
+                         + juce::String(effectCatalog.size()) + " fx", juce::dontSendNotification);
+        appendLog("Loaded plugin cache: " + juce::String(knownPluginList.getNumTypes()) + " total, "
+                  + juce::String(instrumentCatalog.size()) + " instruments, "
+                  + juce::String(effectCatalog.size()) + " effects");
+        return;
+    }
+
     instrumentCatalog.clear();
     effectCatalog.clear();
     knownPluginList.clear();
@@ -1838,22 +2167,8 @@ void HostEngine::refreshPluginCatalog()
         totalTypes = knownPluginList.getNumTypes();
     }
 
-    for (const auto& desc : knownPluginList.getTypes())
-    {
-        if (desc.isInstrument)
-            instrumentCatalog.push_back(desc);
-        else
-            effectCatalog.push_back(desc);
-    }
-
-    std::sort(instrumentCatalog.begin(), instrumentCatalog.end(), [] (const auto& a, const auto& b)
-    {
-        return a.name.compareIgnoreCase(b.name) < 0;
-    });
-    std::sort(effectCatalog.begin(), effectCatalog.end(), [] (const auto& a, const auto& b)
-    {
-        return a.name.compareIgnoreCase(b.name) < 0;
-    });
+    rebuildCatalogFromKnownPlugins();
+    savePluginCatalogCache(signature);
 
     rebuildPluginMenus();
     syncAllLaneRows();
@@ -2604,13 +2919,22 @@ void HostEngine::handleTransport(const juce::OSCMessage& m)
     {
         const auto file = juce::File::getSpecialLocation(juce::File::userDocumentsDirectory)
                               .getNonexistentChildFile("split-audio-take", ".wav");
-        startRecording(file);
-        appendLog("Recording to " + file.getFullPathName());
+        if (startRecording(file))
+        {
+            appendLog("Recording to " + file.getFullPathName());
+            recordingTargetFile = file;
+            recordButton.setButtonText("Stop");
+            recordButton.setToggleState(true, juce::dontSendNotification);
+        }
+        else
+            appendLog("Recording start failed");
     }
     else if (command == "recordStop")
     {
         stopRecording();
         appendLog("Recording stopped");
+        recordButton.setButtonText("Record");
+        recordButton.setToggleState(false, juce::dontSendNotification);
     }
 }
 
@@ -2640,28 +2964,164 @@ void HostEngine::handleTempo(const juce::OSCMessage& m)
     }
 }
 
-void HostEngine::startRecording(const juce::File& destination)
+bool HostEngine::startRecording(const juce::File& destination)
 {
     stopRecording();
+
+    const auto targetRate = juce::jmax(8000.0, recordingSampleRate);
 
     if (auto stream = std::make_unique<juce::FileOutputStream>(destination))
     {
         juce::WavAudioFormat wav;
-        auto* writer = wav.createWriterFor(stream.get(), sampleRate, 2, 24, {}, 0);
+        auto* writer = wav.createWriterFor(stream.get(), targetRate, 2, recordingBitDepth, {}, 0);
         if (writer != nullptr)
         {
             stream.release();
             const juce::ScopedLock scope(writerLock);
             threadedWriter = std::make_unique<juce::AudioFormatWriter::ThreadedWriter>(writer, writerThread, 32768);
-            return;
+            return true;
         }
     }
 
     appendLog("Failed to start recording");
+    return false;
 }
 
 void HostEngine::stopRecording()
 {
     const juce::ScopedLock scope(writerLock);
     threadedWriter.reset();
+}
+
+bool HostEngine::isRecordingActive()
+{
+    const juce::ScopedLock scope(writerLock);
+    return threadedWriter != nullptr;
+}
+
+void HostEngine::toggleRecordingFromUi()
+{
+    if (isRecordingActive())
+    {
+        stopRecording();
+        recordButton.setButtonText("Record");
+        recordButton.setToggleState(false, juce::dontSendNotification);
+        uiStatus.setText("Recording stopped", juce::dontSendNotification);
+        appendLog("Recording stopped");
+        return;
+    }
+
+    auto destination = recordingTargetFile;
+    if (destination == juce::File())
+        destination = juce::File::getSpecialLocation(juce::File::userDocumentsDirectory).getChildFile("split-audio-take.wav");
+
+    auto parent = destination.getParentDirectory();
+    if (! parent.exists())
+        parent = juce::File::getSpecialLocation(juce::File::userDocumentsDirectory);
+
+    const auto stem = destination.getFileNameWithoutExtension().isNotEmpty()
+                          ? destination.getFileNameWithoutExtension()
+                          : juce::String("split-audio-take");
+    const auto file = parent.getNonexistentChildFile(stem, ".wav", false);
+
+    if (startRecording(file))
+    {
+        recordingTargetFile = file;
+        recordButton.setButtonText("Stop");
+        recordButton.setToggleState(true, juce::dontSendNotification);
+        uiStatus.setText("Recording: " + file.getFileName(), juce::dontSendNotification);
+        appendLog("Recording to " + file.getFullPathName() + " (" + juce::String(recordingBitDepth) + "-bit)");
+    }
+    else
+    {
+        recordButton.setButtonText("Record");
+        recordButton.setToggleState(false, juce::dontSendNotification);
+        uiStatus.setText("Failed to start recording", juce::dontSendNotification);
+    }
+}
+
+void HostEngine::openRecordingSettingsDialog()
+{
+    juce::PopupMenu menu;
+    menu.addItem(1, "Set Recording File...");
+    menu.addSeparator();
+    menu.addItem(101, "16-bit WAV", true, recordingBitDepth == 16);
+    menu.addItem(102, "24-bit WAV", true, recordingBitDepth == 24);
+    menu.addItem(103, "32-bit WAV", true, recordingBitDepth == 32);
+    menu.addSeparator();
+    menu.addItem(201, "Sample Rate: 44100", true, std::abs(recordingSampleRate - 44100.0) < 1.0);
+    menu.addItem(202, "Sample Rate: 48000", true, std::abs(recordingSampleRate - 48000.0) < 1.0);
+    menu.addItem(203, "Sample Rate: 88200", true, std::abs(recordingSampleRate - 88200.0) < 1.0);
+    menu.addItem(204, "Sample Rate: 96000", true, std::abs(recordingSampleRate - 96000.0) < 1.0);
+
+    menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(&recordSettingsButton),
+                       [this] (int selection)
+                       {
+                           if (selection == 0)
+                               return;
+
+                           if (selection == 1)
+                           {
+                               auto initial = recordingTargetFile;
+                               if (initial == juce::File())
+                                   initial = juce::File::getSpecialLocation(juce::File::userDocumentsDirectory).getChildFile("split-audio-take.wav");
+
+                               recordSettingsChooser = std::make_unique<juce::FileChooser>("Set Recording File", initial, "*.wav");
+                               recordSettingsChooser->launchAsync(juce::FileBrowserComponent::saveMode
+                                                                  | juce::FileBrowserComponent::canSelectFiles
+                                                                  | juce::FileBrowserComponent::warnAboutOverwriting,
+                                                                  [this] (const juce::FileChooser& chooser)
+                                                                  {
+                                                                      auto file = chooser.getResult();
+                                                                      recordSettingsChooser.reset();
+                                                                      if (file == juce::File())
+                                                                          return;
+                                                                      if (! file.hasFileExtension("wav"))
+                                                                          file = file.withFileExtension("wav");
+
+                                                                      recordingTargetFile = file;
+                                                                      appendLog("Recording file set: " + file.getFullPathName());
+                                                                      uiStatus.setText("Rec file: " + file.getFileName(), juce::dontSendNotification);
+                                                                  });
+                               return;
+                           }
+
+                           if (selection == 101) recordingBitDepth = 16;
+                           else if (selection == 102) recordingBitDepth = 24;
+                           else if (selection == 103) recordingBitDepth = 32;
+                           else if (selection >= 201 && selection <= 204)
+                           {
+                               double desiredRate = recordingSampleRate;
+                               if (selection == 201) desiredRate = 44100.0;
+                               else if (selection == 202) desiredRate = 48000.0;
+                               else if (selection == 203) desiredRate = 88200.0;
+                               else if (selection == 204) desiredRate = 96000.0;
+
+                               juce::AudioDeviceManager::AudioDeviceSetup setup;
+                               deviceManager.getAudioDeviceSetup(setup);
+                               setup.sampleRate = desiredRate;
+                               const auto err = deviceManager.setAudioDeviceSetup(setup, true);
+                               if (err.isNotEmpty())
+                               {
+                                   appendLog("Failed to set sample rate to " + juce::String(desiredRate, 0) + ": " + err);
+                                   uiStatus.setText("Sample rate change failed", juce::dontSendNotification);
+                                   return;
+                               }
+
+                               if (auto* dev = deviceManager.getCurrentAudioDevice())
+                               {
+                                   recordingSampleRate = dev->getCurrentSampleRate();
+                                   appendLog("Recording sample rate set to " + juce::String(recordingSampleRate, 0));
+                                   uiStatus.setText("Rec SR: " + juce::String(recordingSampleRate, 0), juce::dontSendNotification);
+                               }
+                               else
+                               {
+                                   recordingSampleRate = desiredRate;
+                                   appendLog("Recording sample rate set to " + juce::String(recordingSampleRate, 0));
+                               }
+                               return;
+                           }
+
+                           appendLog("Recording bit depth set to " + juce::String(recordingBitDepth));
+                       });
 }

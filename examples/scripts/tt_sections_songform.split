@@ -1,0 +1,102 @@
+language teletype
+m 170
+l 16
+swing 0.11
+laneSteps 0 16
+laneSteps 1 16
+laneSteps 2 16
+laneSteps 3 16
+laneSteps 4 16
+
+section A 8
+section B 8
+section C 8
+
+SCRIPT 1
+METRO 0 4
+METRO 1 2
+METRO 2 8
+SET x 0
+END
+RUN 0 1
+
+# A: sparse intro groove
+SCRIPT 10
+IF m0 == 1 THEN TR 0 kick 0.92
+IF m1 == 1 THEN TR 1 hat 0.48
+IF m0 == 1 THEN NT 2 36 0.78 0.42 bassA
+IF m2 == 1 THEN NT 3 67 0.58 0.20 leadA
+END
+
+# B: denser lift
+SCRIPT 11
+IF m0 == 1 THEN TR 0 kick 0.98
+TR 1 hat 0.56
+IF m1 == 1 THEN TR 0 snare 0.82
+IF m0 == 1 THEN NT 2 41 0.84 0.34 bassB
+IF m1 == 1 THEN NT 3 72 0.66 0.18 leadB
+IF m2 == 1 THEN NT 4 79 0.50 0.14 hiB
+END
+
+# C: variation / breakdown logic
+SCRIPT 12
+ADD x 1
+IF m0 == 1 THEN TR 0 kick 0.90
+IF m2 == 1 THEN TR 0 snare 0.76
+IF m1 == 1 THEN TR 1 hat 0.40
+IF x > 8 THEN NT 2 33 0.74 0.60 bassC ELSE NT 2 45 0.74 0.24 bassC
+IF m2 == 1 THEN NT 3 62 0.62 0.28 leadC
+IF m2 == 1 THEN NT 4 74 0.44 0.20 hiC
+IF x > 16 THEN SET x 0
+END
+
+RUN 0 10 section A
+RUN 1 10 section A
+RUN 2 10 section A
+RUN 3 10 section A
+RUN 4 10 section A
+RUN 5 10 section A
+RUN 6 10 section A
+RUN 7 10 section A
+RUN 8 10 section A
+RUN 9 10 section A
+RUN 10 10 section A
+RUN 11 10 section A
+RUN 12 10 section A
+RUN 13 10 section A
+RUN 14 10 section A
+RUN 15 10 section A
+
+RUN 0 11 section B
+RUN 1 11 section B
+RUN 2 11 section B
+RUN 3 11 section B
+RUN 4 11 section B
+RUN 5 11 section B
+RUN 6 11 section B
+RUN 7 11 section B
+RUN 8 11 section B
+RUN 9 11 section B
+RUN 10 11 section B
+RUN 11 11 section B
+RUN 12 11 section B
+RUN 13 11 section B
+RUN 14 11 section B
+RUN 15 11 section B
+
+RUN 0 12 section C
+RUN 1 12 section C
+RUN 2 12 section C
+RUN 3 12 section C
+RUN 4 12 section C
+RUN 5 12 section C
+RUN 6 12 section C
+RUN 7 12 section C
+RUN 8 12 section C
+RUN 9 12 section C
+RUN 10 12 section C
+RUN 11 12 section C
+RUN 12 12 section C
+RUN 13 12 section C
+RUN 14 12 section C
+RUN 15 12 section C

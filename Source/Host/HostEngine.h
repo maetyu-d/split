@@ -17,6 +17,7 @@ public:
     ~HostEngine() override;
 
     void paint(juce::Graphics& g) override;
+    void paintOverChildren(juce::Graphics& g) override;
     void resized() override;
 
 private:
@@ -117,7 +118,11 @@ private:
     void scheduleNoteOff(int laneIndex, int midiChannel, int midiNote, float velocity, float durationSec);
     void markLaneOscActivity(int laneIndex);
     void appendLog(const juce::String& text);
-    void refreshPluginCatalog();
+    void refreshPluginCatalog(bool forceRescan = false);
+    void rebuildCatalogFromKnownPlugins();
+    juce::String computePluginScanSignature() const;
+    bool loadPluginCatalogCache(const juce::String& signature);
+    void savePluginCatalogCache(const juce::String& signature);
     bool loadInstrumentIntoLane(int laneIndex, int instrumentIndex);
     void unloadInstrumentFromLane(int laneIndex);
     bool loadPluginDescriptionIntoLane(int laneIndex, const juce::PluginDescription& desc, const juce::String& stateBase64);
@@ -146,8 +151,11 @@ private:
     juce::ValueTree buildConfigTree();
     bool applyConfigTree(const juce::ValueTree& root);
 
-    void startRecording(const juce::File& destination);
+    bool startRecording(const juce::File& destination);
     void stopRecording();
+    void toggleRecordingFromUi();
+    void openRecordingSettingsDialog();
+    bool isRecordingActive();
     void updateAudioHeartbeatUi();
 
     juce::AudioDeviceManager deviceManager;
@@ -156,8 +164,12 @@ private:
     std::vector<juce::PluginDescription> instrumentCatalog;
     std::vector<juce::PluginDescription> effectCatalog;
     juce::File deadMansPedalFile;
+    juce::File pluginCacheFile;
 
     juce::TextButton refreshPluginsButton { "Refresh Plugins" };
+    juce::TextButton audioSettingsButton { "Audio Settings" };
+    juce::TextButton recordButton { "Record" };
+    juce::TextButton recordSettingsButton { "Rec Settings" };
     juce::TextButton saveConfigButton { "Save Config" };
     juce::TextButton loadConfigButton { "Load Config" };
     juce::TextButton logDrawerButton { "Logs" };
@@ -197,8 +209,14 @@ private:
     std::array<std::unique_ptr<juce::AudioPluginInstance>, numMasterFxSlots> masterFxPlugins;
     std::array<juce::String, numMasterFxSlots> masterFxNames {};
     juce::AudioBuffer<float> masterTempBuffer;
+    juce::Rectangle<int> masterMeterBounds;
     std::unique_ptr<juce::FileChooser> configLoadChooser;
     std::unique_ptr<juce::FileChooser> configSaveChooser;
+    std::unique_ptr<juce::FileChooser> recordSettingsChooser;
+    juce::File lastLoadedConfigFile;
+    juce::File recordingTargetFile;
+    int recordingBitDepth = 24;
+    double recordingSampleRate = 48000.0;
     bool suppressUiCallbacks = false;
     bool logDrawerOpen = false;
 
@@ -215,6 +233,8 @@ private:
     double sampleRate = 48000.0;
     int expectedBlockSize = 512;
     std::atomic<float> masterGain { 1.0f };
+    std::array<std::atomic<float>, 2> masterMeterPeaks { std::atomic<float>{ 0.0f }, std::atomic<float>{ 0.0f } };
+    std::array<float, 2> masterMeterLevels { 0.0f, 0.0f };
     std::atomic<uint64_t> audioCallbackCounter { 0 };
     std::atomic<uint64_t> audioSampleCounter { 0 };
     std::array<uint64_t, numLanes * 16 * 128> lastNoteOnSample {};
@@ -227,6 +247,7 @@ private:
     double lastTempoUiMs = 0.0;
 
     std::unique_ptr<juce::AudioFormatWriter::ThreadedWriter> threadedWriter;
+    juce::AudioBuffer<float> recordingStereoScratch;
     juce::TimeSliceThread writerThread { "wav-writer" };
     juce::CriticalSection writerLock;
 };

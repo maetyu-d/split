@@ -1,0 +1,52 @@
+language teletype
+m 178
+l 16
+swing 0.14
+laneSteps 0 16
+laneSteps 1 16
+laneSteps 2 16
+laneSteps 3 16
+laneSteps 4 16
+
+SCRIPT 1
+METRO 0 2
+METRO 1 4
+METRO 2 8
+SET x 0
+SET y 0
+END
+RUN 0 1
+
+# Demonstrates logic/math families + probability
+SCRIPT 2
+ADD x 1
+RRAND y 0 1
+CMP t y > 0.62
+IF t == 1 THEN TR 0 kick 0.96 ELSE TR 1 hat 0.42
+IF m1 == 1 THEN IRAND z 33 45
+IF m1 == 1 THEN NT 2 z 0.82 0.34 bassRnd
+IF m2 == 1 THEN IRAND z 60 72
+IF m2 == 1 THEN NT 3 z 0.68 0.18 leadRnd
+IF m2 == 1 THEN SIN t
+IF m2 == 1 THEN CLAMP t -1 1
+IF m2 == 1 THEN MD 3 lane.pan t 0.0
+IF x > 128 THEN CLOCK 168
+IF x <= 128 THEN CLOCK 178
+END
+
+RUN 0 2
+RUN 1 2
+RUN 2 2
+RUN 3 2
+RUN 4 2
+RUN 5 2
+RUN 6 2
+RUN 7 2
+RUN 8 2
+RUN 9 2
+RUN 10 2
+RUN 11 2
+RUN 12 2
+RUN 13 2
+RUN 14 2
+RUN 15 2

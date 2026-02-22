@@ -4,19 +4,42 @@ swing 0.02
 laneSteps 0 15
 laneSteps 1 16
 laneSteps 2 11
+laneSteps 3 16
+laneSteps 4 12
 
-break 0 0 k--h-s--k-h--s- 0.95 1.0 every 1
-break 0 0 -g--h---g--h--- 0.75 0.9 every 1
+# A section: sparse machine funk
+note 0 0 [36 - - 42 - 38 - - 36 - 42 - - 38 -] 0.9 0.08 kickA 1.0 notEvery 4
+note 0 0 [- 37 - - 42 - - - - 37 - - 42 - -] 0.68 0.05 percA 0.9 notEvery 4
 
-note 0 1 [60 - 62 - 65 - 67 -] 0.7 0.5 pad 0.9 every 1
-note 0 2 [72 - - 74 - 76 - - 79 - -] 0.65 0.25 blip 0.85 every 1
+# B section: rotated density
+note 0 0 [36 - 42 - 38 - 36 - 42 - 38 - 36 - 42] 0.78 0.06 kickB 0.9 every 4 notEvery 8
+note 0 0 [- - 37 - 42 - - 37 - - 42 - - 37 -] 0.62 0.04 percB 0.85 every 4
 
-mod 0 1 lane.pan -0.55 0.0 1.0 every 3
-mod 4 1 lane.pan 0.55 0.0 1.0 every 3
-mod 8 2 lane.gain 1.2 0.0 0.7 every 5
-mod 2 2 lane.gain 0.6 0.0 0.7 every 5
+# C section: minimal reset
+note 0 0 [36 - - - - 42 - - - - 38 - - - -] 0.88 0.1 kickC 1.0 every 8
+
+# Track 2 rhythm: polymetric top layer
+note 0 1 [42 - 46 - - 49 - 46 - 42 - 49 - - 46 -] 0.62 0.055 perc2A 0.9 notEvery 4
+note 0 1 [42 46 - 49 46 - 42 49 - 46 42 - 49 46 - 42] 0.52 0.04 perc2B 0.85 every 4
+
+# Track 3 bass in 11 steps: mutating cell
+note 0 2 [36 - - 38 - 41 - - 43 - -] 0.78 0.36 bassA 1.0 notEvery 4
+note 0 2 [36 - 38 - 41 - 43 - 41 - 38] 0.74 0.28 bassB 0.95 every 4 notEvery 8
+note 0 2 [29 - - - 36 - - - 41 - -] 0.84 0.5 bassC 1.0 every 8
+
+# Track 4 melodic pad: evolving chord color
+note 0 3 [60 - 62 - 65 - 67 - 69 - 67 - 65 - 62 -] 0.66 0.32 padA 0.9 notEvery 4
+note 0 3 [58 - 62 - 67 - 70 - 74 - 70 - 67 - 62 -] 0.62 0.24 padB 0.9 every 4
+
+# Track 5 melodic blips in 12 steps
+note 0 4 [72 - - 74 - 76 - - 79 - - 81] 0.62 0.22 blipA 0.85 notEvery 4
+note 0 4 [74 - 76 - 79 - 81 - 84 - 81 -] 0.56 0.16 blipB 0.82 every 4
+
+mod 0 3 lane.pan -0.55 0.0 1.0 every 3
+mod 4 3 lane.pan 0.55 0.0 1.0 every 3
+mod 8 4 lane.gain 1.2 0.0 0.7 every 5
+mod 2 4 lane.gain 0.6 0.0 0.7 every 5
 
 scramble 0 every 4 0.8
 rotate 1 2 every 3 0.9
-rotate 2 -1 every 2 0.9
-stutter 0 hat 3 every 4 0.5
+rotate 3 -1 every 2 0.9

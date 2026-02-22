@@ -1,0 +1,58 @@
+language teletype
+m 166
+l 16
+swing 0.10
+laneSteps 0 16
+laneSteps 1 16
+laneSteps 2 16
+laneSteps 3 16
+laneSteps 4 16
+
+# Build a tiny melodic register bank P0..P7
+SCRIPT 1
+PCLR
+PSET 0 36
+PSET 1 38
+PSET 2 41
+PSET 3 43
+PSET 4 48
+PSET 5 50
+PSET 6 53
+PSET 7 55
+METRO 0 4
+METRO 1 8
+SET x 0
+END
+RUN 0 1
+
+# Per-step engine
+SCRIPT 2
+ADD x 1
+IF m1 == 1 THEN PROT 1
+IF m0 == 1 THEN PGET y 0
+IF m0 == 1 THEN NT 2 y 0.86 0.48 bassP
+IF m0 == 1 THEN PGET z 4
+IF m0 == 1 THEN NT 3 z 0.62 0.22 melP
+IF m1 == 1 THEN PRAND 7 67 79
+IF m1 == 1 THEN PGET t 7
+IF m1 == 1 THEN NT 4 t 0.50 0.16 hiP
+IF m0 == 1 THEN TR 0 kick 0.95
+IF m0 == 1 THEN TR 1 hat 0.48
+END
+
+RUN 0 2
+RUN 1 2
+RUN 2 2
+RUN 3 2
+RUN 4 2
+RUN 5 2
+RUN 6 2
+RUN 7 2
+RUN 8 2
+RUN 9 2
+RUN 10 2
+RUN 11 2
+RUN 12 2
+RUN 13 2
+RUN 14 2
+RUN 15 2
