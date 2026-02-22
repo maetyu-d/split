@@ -1,4 +1,4 @@
-# split - Two-Part, OSC-Connected Music Programming IDE and Plugin Host
+# split - A Two-Part, OSC-Connected Music Programming IDE and Plugin Host
 
 ![](https://github.com/maetyu-d/split/blob/main/Screenshot%202026-02-22%20at%2013.28.50.png)
 
