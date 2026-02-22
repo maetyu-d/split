@@ -2,8 +2,10 @@
 
 Split consists of the following two applications, developed in JUCE, that work together over OSC:
 
-- `Pattern IDE` (language + live transport + timeline view)
+- `Pattern IDE` (split (or TT) language + live transport + timeline view)
 - `Plugin Host` (AU and VST3 lane host + mixer + recording)
+
+![](https://github.com/maetyu-d/split/blob/main/Screenshot%202026-02-22%20at%2013.28.50.png)
 
 
 ## What It Does
