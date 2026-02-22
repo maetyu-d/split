@@ -7,6 +7,7 @@ split consists of the following two applications, developed in JUCE, that work t
 - `Pattern IDE` (split (or TT) language + live transport + timeline view)
 - `Plugin Host` (AU and VST3 lane host + mixer + recording)
 
+There's a brief demo [HERE](https://youtu.be/5kSPhPG40_o).
 
 ## What It Does
 
