@@ -9,7 +9,8 @@
 class HostEngine final : public juce::Component,
                          private juce::OSCReceiver,
                          private juce::OSCReceiver::Listener<juce::OSCReceiver::MessageLoopCallback>,
-                         private juce::AudioIODeviceCallback
+                         private juce::AudioIODeviceCallback,
+                         private juce::Timer
 {
 public:
     HostEngine();
@@ -24,21 +25,37 @@ private:
     static constexpr int numLanes = 10;
     static constexpr int numFxSlots = 3;
     static constexpr int numMasterFxSlots = 6;
-    static constexpr int midiQueueCapacity = 2048;
-    static constexpr int maxDueOffsPerBlock = 256;
+    static constexpr int maxDueOffsPerBlock = 4096;
+    static constexpr int rtEventFifoCapacity = 8192;
 
-    struct RtMidiEvent
+    enum class RtEventType : uint8_t
     {
-        uint8_t status = 0;
-        uint8_t data1 = 0;
-        uint8_t data2 = 0;
+        noteOn = 0,
+        noteOff = 1
+    };
+
+    struct RtEvent
+    {
+        RtEventType type = RtEventType::noteOn;
+        int lane = 0;
+        int channel = 1;
+        int note = 60;
+        float velocity = 0.0f;
+        float durationSec = -1.0f;
+    };
+
+    struct PendingMidiEvent
+    {
+        juce::MidiMessage message;
+        uint64_t dueSample = 0;
     };
 
     struct Lane
     {
         juce::Synthesiser synth;
         juce::AudioBuffer<float> tempBuffer;
-        std::unique_ptr<juce::AudioPluginInstance> plugin;
+        std::unique_ptr<juce::AudioProcessorGraph> graph;
+        juce::AudioPluginInstance* plugin = nullptr; // owned by graph node when present
         juce::String pluginName { "Built-in Sine" };
         std::array<std::unique_ptr<juce::AudioPluginInstance>, numFxSlots> fxPlugins;
         std::array<juce::String, numFxSlots> fxNames { "None", "None", "None" };
@@ -46,25 +63,29 @@ private:
         std::atomic<float> pan { 0.0f }; // -1..+1
         std::atomic<bool> muted { false };
         std::atomic<bool> solo { false };
+        std::atomic<int> auditionSamplesRemaining { 0 };
 
-        std::array<RtMidiEvent, midiQueueCapacity> midiQueue {};
-        std::atomic<uint32_t> midiWriteIndex { 0 };
-        std::atomic<uint32_t> midiReadIndex { 0 };
+        std::vector<PendingMidiEvent> midiQueue;
+        juce::SpinLock midiQueueLock;
+        std::array<uint8_t, 16 * 128> activeNotes {};
     };
 
     struct ScheduledNoteOff
     {
         int lane = 0;
+        int channel = 1;
         int note = 60;
         float velocity = 0.0f;
-        double dueMs = 0.0;
+        uint64_t dueSample = 0;
     };
 
     struct DueNoteOff
     {
         int lane = 0;
+        int channel = 1;
         int note = 60;
         float velocity = 0.0f;
+        int sampleOffset = 0;
     };
 
     void oscMessageReceived(const juce::OSCMessage& message) override;
@@ -77,6 +98,7 @@ private:
                                           const juce::AudioIODeviceCallbackContext& context) override;
     void audioDeviceAboutToStart(juce::AudioIODevice* device) override;
     void audioDeviceStopped() override;
+    void timerCallback() override;
 
     void handleTrigger(const juce::OSCMessage& m);
     void handleNote(const juce::OSCMessage& m);
@@ -86,15 +108,20 @@ private:
     void handleTempo(const juce::OSCMessage& m);
 
     Lane* getLane(int index);
-    bool enqueueMidiMessage(int laneIndex, const juce::MidiMessage& message);
-    void popMidiEventsForLane(Lane& lane, juce::MidiBuffer& out);
-    int collectDueNoteOffs(std::array<DueNoteOff, maxDueOffsPerBlock>& out);
-    void scheduleNoteOff(int laneIndex, int midiNote, float velocity, float durationSec);
+    bool enqueueMidiMessage(int laneIndex, const juce::MidiMessage& message, uint64_t dueSample = 0);
+    void popMidiEventsForLane(Lane& lane, juce::MidiBuffer& out, uint64_t blockStartSample, int numSamples);
+    bool pushRtEvent(const RtEvent& ev);
+    void drainRtEventsToMidi(uint64_t blockStartSample);
+    int collectDueNoteOffs(std::array<DueNoteOff, maxDueOffsPerBlock>& out, uint64_t blockStartSample, int numSamples);
+    void scheduleNoteOffAtSample(int laneIndex, int midiChannel, int midiNote, float velocity, uint64_t dueSample);
+    void scheduleNoteOff(int laneIndex, int midiChannel, int midiNote, float velocity, float durationSec);
+    void markLaneOscActivity(int laneIndex);
     void appendLog(const juce::String& text);
     void refreshPluginCatalog();
     bool loadInstrumentIntoLane(int laneIndex, int instrumentIndex);
     void unloadInstrumentFromLane(int laneIndex);
     bool loadPluginDescriptionIntoLane(int laneIndex, const juce::PluginDescription& desc, const juce::String& stateBase64);
+    bool rebuildLaneGraphWithInstrument(int laneIndex, std::unique_ptr<juce::AudioPluginInstance> instrument);
     bool loadEffectIntoLaneSlot(int laneIndex, int slotIndex, int effectIndex);
     bool loadEffectDescriptionIntoLaneSlot(int laneIndex, int slotIndex, const juce::PluginDescription& desc, const juce::String& stateBase64);
     void unloadEffectFromLaneSlot(int laneIndex, int slotIndex);
@@ -121,6 +148,7 @@ private:
 
     void startRecording(const juce::File& destination);
     void stopRecording();
+    void updateAudioHeartbeatUi();
 
     juce::AudioDeviceManager deviceManager;
     juce::AudioPluginFormatManager formatManager;
@@ -147,6 +175,7 @@ private:
     juce::Label editHeaderLabel;
     juce::Label loadedHeaderLabel;
     std::array<juce::Label, numLanes> laneLabels;
+    std::array<juce::Label, numLanes> laneOscIndicators;
     std::array<juce::ToggleButton, numLanes> laneMuteButtons;
     std::array<juce::ToggleButton, numLanes> laneSoloButtons;
     std::array<juce::Slider, numLanes> laneGainSliders;
@@ -178,10 +207,22 @@ private:
     juce::CriticalSection logLock;
     bool logIncomingOsc = false;
     std::array<Lane, numLanes> lanes;
+    std::array<std::atomic<uint32_t>, numLanes> laneOscActiveUntilMs {};
+    juce::AbstractFifo rtEventFifo { rtEventFifoCapacity };
+    std::array<RtEvent, rtEventFifoCapacity> rtEventBuffer {};
     std::vector<ScheduledNoteOff> scheduledNoteOffs;
+    std::atomic<int> scheduledNoteOffCount { 0 };
     double sampleRate = 48000.0;
     int expectedBlockSize = 512;
     std::atomic<float> masterGain { 1.0f };
+    std::atomic<uint64_t> audioCallbackCounter { 0 };
+    std::atomic<uint64_t> audioSampleCounter { 0 };
+    std::array<uint64_t, numLanes * 16 * 128> lastNoteOnSample {};
+    int noteOnDedupeSamples = 96;
+    uint64_t lastAudioCallbackCounter = 0;
+    uint32_t lastHeartbeatUiMs = 0;
+    uint32_t lastAudioRestartAttemptMs = 0;
+    bool lastAudioRunningState = true;
     float lastTempoUiBpm = -1.0f;
     double lastTempoUiMs = 0.0;
 

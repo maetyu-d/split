@@ -139,6 +139,126 @@ juce::String getStringArg(const juce::OSCMessage& m, int index)
     return m[index].getString();
 }
 
+bool configurePluginBuses(juce::AudioPluginInstance& plugin, bool isInstrument)
+{
+    plugin.enableAllBuses();
+
+    if (isInstrument)
+        return true; // Leave instrument bus layout untouched; many commercial synths expect native defaults.
+
+    plugin.disableNonMainBuses();
+
+    const bool hasInput = plugin.getBusCount(true) > 0;
+    const bool hasOutput = plugin.getBusCount(false) > 0;
+    auto base = plugin.getBusesLayout();
+
+    if (! hasOutput)
+        return true;
+
+    const auto inDisabled = juce::AudioChannelSet::disabled();
+    const auto inMono = juce::AudioChannelSet::mono();
+    const auto inStereo = juce::AudioChannelSet::stereo();
+    const auto outMono = juce::AudioChannelSet::mono();
+    const auto outStereo = juce::AudioChannelSet::stereo();
+
+    std::vector<std::pair<juce::AudioChannelSet, juce::AudioChannelSet>> candidates;
+    if (isInstrument)
+    {
+        candidates.push_back({ inDisabled, outStereo });
+        candidates.push_back({ inDisabled, outMono });
+        candidates.push_back({ inStereo, outStereo });
+        candidates.push_back({ inMono, outMono });
+    }
+    else
+    {
+        candidates.push_back({ inStereo, outStereo });
+        candidates.push_back({ inMono, outMono });
+        candidates.push_back({ inStereo, outMono });
+        candidates.push_back({ inMono, outStereo });
+    }
+
+    for (const auto& candidate : candidates)
+    {
+        auto attempt = base;
+        if (hasInput)
+            attempt.getMainInputChannelSet() = candidate.first;
+        if (hasOutput)
+            attempt.getMainOutputChannelSet() = candidate.second;
+
+        if (plugin.checkBusesLayoutSupported(attempt) && plugin.setBusesLayout(attempt))
+        {
+            if (hasInput)
+                if (auto* inBus = plugin.getBus(true, 0))
+                    inBus->enable(! isInstrument);
+            if (hasOutput)
+                if (auto* outBus = plugin.getBus(false, 0))
+                    outBus->enable(true);
+            return true;
+        }
+    }
+
+    auto lastResort = plugin.getBusesLayout();
+    if (hasOutput && lastResort.getMainOutputChannelSet().isDisabled())
+        lastResort.getMainOutputChannelSet() = outStereo;
+
+    if (hasInput)
+        lastResort.getMainInputChannelSet() = isInstrument ? inDisabled : inStereo;
+
+    if (plugin.checkBusesLayoutSupported(lastResort) && plugin.setBusesLayout(lastResort))
+    {
+        if (hasInput)
+            if (auto* inBus = plugin.getBus(true, 0))
+                inBus->enable(! isInstrument);
+        if (hasOutput)
+            if (auto* outBus = plugin.getBus(false, 0))
+                outBus->enable(true);
+        return true;
+    }
+
+    return false;
+}
+
+juce::String channelSetToString(const juce::AudioChannelSet& set)
+{
+    if (set.isDisabled())
+        return "disabled";
+    return set.getDescription();
+}
+
+juce::String pluginIoSummary(juce::AudioPluginInstance& plugin)
+{
+    juce::String s;
+    s << "inBuses=" << plugin.getBusCount(true)
+      << " outBuses=" << plugin.getBusCount(false)
+      << " acceptsMidi=" << (plugin.acceptsMidi() ? "1" : "0")
+      << " producesMidi=" << (plugin.producesMidi() ? "1" : "0")
+      << " isMidiEffect=" << (plugin.isMidiEffect() ? "1" : "0")
+      << " totalInCh=" << plugin.getTotalNumInputChannels()
+      << " totalOutCh=" << plugin.getTotalNumOutputChannels();
+
+    const auto layout = plugin.getBusesLayout();
+    if (plugin.getBusCount(true) > 0)
+        s << " mainIn=" << channelSetToString(layout.getMainInputChannelSet());
+    if (plugin.getBusCount(false) > 0)
+        s << " mainOut=" << channelSetToString(layout.getMainOutputChannelSet());
+    return s;
+}
+
+bool preparePluginInstance(juce::AudioPluginInstance& plugin, bool isInstrument, double sampleRate, int blockSize)
+{
+    plugin.releaseResources();
+    plugin.setNonRealtime(false);
+    plugin.suspendProcessing(false);
+    const auto busesOk = configurePluginBuses(plugin, isInstrument);
+    const auto totalIns = plugin.getTotalNumInputChannels();
+    const auto totalOuts = plugin.getTotalNumOutputChannels();
+    plugin.setPlayConfigDetails(totalIns, totalOuts, sampleRate, blockSize);
+    plugin.setRateAndBufferSizeDetails(sampleRate, blockSize);
+    plugin.prepareToPlay(sampleRate, blockSize);
+    plugin.reset();
+    return busesOk;
+}
+
 constexpr int kNumFxSlots = 3;
 constexpr int kNumMasterFxSlots = 6;
 
@@ -267,10 +387,11 @@ HostEngine::HostEngine()
         for (int v = 0; v < 8; ++v)
             lane.synth.addVoice(new SineVoice());
         lane.synth.addSound(new SineSound());
+        lane.midiQueue.reserve(4096);
     }
+    scheduledNoteOffs.reserve(8192);
 
     setOpaque(true);
-    setBufferedToImage(true);
 
     auto styleTopButton = [] (juce::TextButton& b)
     {
@@ -403,6 +524,12 @@ HostEngine::HostEngine()
         laneLabels[static_cast<size_t> (i)].setText("T" + juce::String(i + 1), juce::dontSendNotification);
         laneLabels[static_cast<size_t> (i)].setJustificationType(juce::Justification::centred);
         laneLabels[static_cast<size_t> (i)].setColour(juce::Label::textColourId, juce::Colour::fromRGB(216, 220, 228));
+
+        addAndMakeVisible(laneOscIndicators[static_cast<size_t> (i)]);
+        laneOscIndicators[static_cast<size_t> (i)].setText("●", juce::dontSendNotification);
+        laneOscIndicators[static_cast<size_t> (i)].setJustificationType(juce::Justification::centred);
+        laneOscIndicators[static_cast<size_t> (i)].setColour(juce::Label::textColourId, juce::Colour::fromRGB(112, 128, 148));
+        laneOscIndicators[static_cast<size_t> (i)].setAlpha(0.28f);
 
         addAndMakeVisible(laneMuteButtons[static_cast<size_t> (i)]);
         laneMuteButtons[static_cast<size_t> (i)].setButtonText("M");
@@ -637,7 +764,7 @@ HostEngine::HostEngine()
     log.setReadOnly(true);
     log.setScrollbarsShown(true);
     log.setCaretVisible(false);
-    log.setText("Host started\n");
+    log.setText("Host started (" __DATE__ " " __TIME__ ")\n");
     logWindow = std::make_unique<LogWindow>(log, [this] (bool visible)
     {
         logDrawerOpen = visible;
@@ -649,17 +776,56 @@ HostEngine::HostEngine()
 
     writerThread.startThread();
 
-    deviceManager.initialiseWithDefaultDevices(0, 2);
+    const auto initError = deviceManager.initialiseWithDefaultDevices(0, 2);
+    if (initError.isNotEmpty())
+    {
+        appendLog("Audio init error: " + initError);
+        uiStatus.setText("Audio init error: " + initError, juce::dontSendNotification);
+    }
+    else
+    {
+        appendLog("Audio init ok");
+    }
+
+    if (auto* dev = deviceManager.getCurrentAudioDevice())
+    {
+        juce::AudioDeviceManager::AudioDeviceSetup setup;
+        deviceManager.getAudioDeviceSetup(setup);
+        setup.useDefaultInputChannels = false;
+        setup.useDefaultOutputChannels = true;
+        setup.bufferSize = juce::jmax(128, setup.bufferSize);
+        const auto setupError = deviceManager.setAudioDeviceSetup(setup, true);
+        if (setupError.isNotEmpty())
+            appendLog("Audio setup warning: " + setupError);
+
+        deviceManager.restartLastAudioDevice();
+
+        dev = deviceManager.getCurrentAudioDevice();
+        appendLog("Audio device: " + dev->getName()
+                  + " sr=" + juce::String(dev->getCurrentSampleRate(), 1)
+                  + " block=" + juce::String(dev->getCurrentBufferSizeSamples())
+                  + " activeOut=" + juce::String(dev->getActiveOutputChannels().countNumberOfSetBits())
+                  + " namedOut=" + juce::String(dev->getOutputChannelNames().size()));
+    }
+    else
+    {
+        appendLog("Audio device: none");
+        uiStatus.setText("No active audio output device", juce::dontSendNotification);
+    }
+
     deviceManager.addAudioCallback(this);
 
     connect(oscproto::defaultPort);
     addListener(this);
+    startTimerHz(20);
 
     appendLog("Listening OSC on port " + juce::String(oscproto::defaultPort));
 }
 
 HostEngine::~HostEngine()
 {
+    stopTimer();
+
     masterGainSlider.setLookAndFeel(nullptr);
     for (auto& s : laneGainSliders)
         s.setLookAndFeel(nullptr);
@@ -678,6 +844,60 @@ HostEngine::~HostEngine()
     deviceManager.removeAudioCallback(this);
     disconnect();
     writerThread.stopThread(1000);
+}
+
+void HostEngine::timerCallback()
+{
+    updateAudioHeartbeatUi();
+
+    const auto now = juce::Time::getMillisecondCounter();
+    for (int i = 0; i < static_cast<int> (laneOscIndicators.size()); ++i)
+    {
+        const auto activeUntil = laneOscActiveUntilMs[static_cast<size_t> (i)].load(std::memory_order_relaxed);
+        const auto active = (activeUntil > now);
+        laneOscIndicators[static_cast<size_t> (i)].setColour(juce::Label::textColourId,
+                                                             active ? juce::Colour::fromRGB(130, 242, 186)
+                                                                    : juce::Colour::fromRGB(112, 128, 148));
+        laneOscIndicators[static_cast<size_t> (i)].setAlpha(active ? 1.0f : 0.28f);
+    }
+
+}
+
+void HostEngine::updateAudioHeartbeatUi()
+{
+    const auto now = juce::Time::getMillisecondCounter();
+    if (now - lastHeartbeatUiMs < 500)
+        return;
+    lastHeartbeatUiMs = now;
+
+    const auto c = audioCallbackCounter.load(std::memory_order_relaxed);
+    const auto running = (c != lastAudioCallbackCounter);
+    lastAudioCallbackCounter = c;
+    if (running != lastAudioRunningState)
+    {
+        appendLog(running ? "Audio callback: running" : "Audio callback: stopped");
+        lastAudioRunningState = running;
+    }
+
+    if (running)
+    {
+        if (! uiStatus.getText().startsWith("Audio: running"))
+            uiStatus.setText("Audio: running | OSC " + juce::String(oscproto::defaultPort), juce::dontSendNotification);
+    }
+    else
+    {
+        uiStatus.setText("Audio: stopped (no callback) | check output device", juce::dontSendNotification);
+    }
+
+}
+
+void HostEngine::markLaneOscActivity(int laneIndex)
+{
+    if (! juce::isPositiveAndBelow(laneIndex, static_cast<int> (laneOscActiveUntilMs.size())))
+        return;
+
+    laneOscActiveUntilMs[static_cast<size_t> (laneIndex)].store(juce::Time::getMillisecondCounter() + 180u,
+                                                                 std::memory_order_relaxed);
 }
 
 void HostEngine::paint(juce::Graphics& g)
@@ -746,7 +966,9 @@ void HostEngine::resized()
         if (i < laneCount - 1)
             area.removeFromLeft(laneGap);
 
-        laneLabels[static_cast<size_t> (i)].setBounds(col.removeFromTop(laneLabelH));
+        auto laneHead = col.removeFromTop(laneLabelH);
+        laneOscIndicators[static_cast<size_t> (i)].setBounds(laneHead.removeFromRight(14));
+        laneLabels[static_cast<size_t> (i)].setBounds(laneHead);
         laneLabels[static_cast<size_t> (i)].setFont(juce::FontOptions(laneNameFont));
         lanePluginPickers[static_cast<size_t> (i)].setBounds(col.removeFromTop(pickerH).reduced(0, 1));
         lanePluginNameLabels[static_cast<size_t> (i)].setVisible(! hidePluginNames);
@@ -878,11 +1100,17 @@ void HostEngine::audioDeviceIOCallbackWithContext(const float* const*,
                                                   int numSamples,
                                                   const juce::AudioIODeviceCallbackContext&)
 {
+    juce::ScopedNoDenormals noDenormals;
+    audioCallbackCounter.fetch_add(1, std::memory_order_relaxed);
+    const auto blockStartSample = audioSampleCounter.fetch_add(static_cast<uint64_t> (numSamples), std::memory_order_relaxed);
+
     juce::AudioBuffer<float> outputBuffer(outputChannelData, numOutputChannels, numSamples);
     outputBuffer.clear();
 
+    drainRtEventsToMidi(blockStartSample);
+
     std::array<DueNoteOff, maxDueOffsPerBlock> dueOffs {};
-    const auto dueCount = collectDueNoteOffs(dueOffs);
+    const auto dueCount = collectDueNoteOffs(dueOffs, blockStartSample, numSamples);
 
     bool anySoloed = false;
     {
@@ -892,60 +1120,75 @@ void HostEngine::audioDeviceIOCallbackWithContext(const float* const*,
     for (int laneIndex = 0; laneIndex < static_cast<int> (lanes.size()); ++laneIndex)
     {
         auto& lane = lanes[static_cast<size_t> (laneIndex)];
-        if (lane.tempBuffer.getNumChannels() < numOutputChannels || lane.tempBuffer.getNumSamples() < numSamples)
+        if (lane.tempBuffer.getNumSamples() < numSamples)
             continue; // Avoid allocating in audio thread.
 
-        lane.tempBuffer.clear();
+        juce::AudioBuffer<float> laneBlock(lane.tempBuffer.getArrayOfWritePointers(),
+                                           lane.tempBuffer.getNumChannels(),
+                                           numSamples);
+        laneBlock.clear();
 
         juce::MidiBuffer midi;
-        popMidiEventsForLane(lane, midi);
+        popMidiEventsForLane(lane, midi, blockStartSample, numSamples);
         for (int i = 0; i < dueCount; ++i)
             if (dueOffs[static_cast<size_t> (i)].lane == laneIndex)
-                midi.addEvent(juce::MidiMessage::noteOff(1, dueOffs[static_cast<size_t> (i)].note, dueOffs[static_cast<size_t> (i)].velocity), 0);
+                midi.addEvent(juce::MidiMessage::noteOff(dueOffs[static_cast<size_t> (i)].channel,
+                                                         dueOffs[static_cast<size_t> (i)].note,
+                                                         dueOffs[static_cast<size_t> (i)].velocity),
+                              dueOffs[static_cast<size_t> (i)].sampleOffset);
 
         const auto gain = lane.gain.load();
         const auto pan = lane.pan.load();
         const auto muted = lane.muted.load();
         const auto solo = lane.solo.load();
-        auto* plugin = lane.plugin.get();
+        auto* plugin = lane.plugin;
+        const auto auditionRemaining = lane.auditionSamplesRemaining.load(std::memory_order_relaxed);
+        const auto auditionActive = auditionRemaining > 0;
+        if (auditionActive)
+            lane.auditionSamplesRemaining.store(juce::jmax(0, auditionRemaining - numSamples), std::memory_order_relaxed);
 
-        if (muted || (anySoloed && ! solo))
+        if (! auditionActive && (muted || (anySoloed && ! solo)))
             continue;
 
-        if (plugin != nullptr)
-            plugin->processBlock(lane.tempBuffer, midi);
+        if (lane.graph != nullptr && plugin != nullptr)
+            lane.graph->processBlock(laneBlock, midi);
         else
-            lane.synth.renderNextBlock(lane.tempBuffer, midi, 0, numSamples);
+            lane.synth.renderNextBlock(laneBlock, midi, 0, numSamples);
 
         juce::MidiBuffer fxMidi;
         for (auto& fx : lane.fxPlugins)
             if (fx != nullptr)
-                fx->processBlock(lane.tempBuffer, fxMidi);
+                fx->processBlock(laneBlock, fxMidi);
 
         const auto clampedPan = juce::jlimit(-1.0f, 1.0f, pan);
         const auto leftGain = gain * juce::jlimit(0.0f, 1.0f, 1.0f - clampedPan);
         const auto rightGain = gain * juce::jlimit(0.0f, 1.0f, 1.0f + clampedPan);
 
         if (numOutputChannels > 0)
-            outputBuffer.addFrom(0, 0, lane.tempBuffer, 0, 0, numSamples, leftGain);
+            outputBuffer.addFrom(0, 0, laneBlock, 0, 0, numSamples, leftGain);
         if (numOutputChannels > 1)
-            outputBuffer.addFrom(1, 0, lane.tempBuffer, juce::jmin(1, lane.tempBuffer.getNumChannels() - 1), 0, numSamples, rightGain);
+            outputBuffer.addFrom(1, 0, laneBlock, juce::jmin(1, laneBlock.getNumChannels() - 1), 0, numSamples, rightGain);
         for (int ch = 2; ch < numOutputChannels; ++ch)
-            outputBuffer.addFrom(ch, 0, lane.tempBuffer, juce::jmin(ch, lane.tempBuffer.getNumChannels() - 1), 0, numSamples, gain);
+            outputBuffer.addFrom(ch, 0, laneBlock, juce::jmin(ch, laneBlock.getNumChannels() - 1), 0, numSamples, gain);
     }
 
-    if (masterTempBuffer.getNumChannels() >= numOutputChannels && masterTempBuffer.getNumSamples() >= numSamples)
+    if (masterTempBuffer.getNumSamples() >= numSamples)
     {
+        juce::AudioBuffer<float> masterBlock(masterTempBuffer.getArrayOfWritePointers(),
+                                             masterTempBuffer.getNumChannels(),
+                                             numSamples);
         for (int ch = 0; ch < numOutputChannels; ++ch)
-            masterTempBuffer.copyFrom(ch, 0, outputBuffer, ch, 0, numSamples);
+            if (ch < masterBlock.getNumChannels())
+                masterBlock.copyFrom(ch, 0, outputBuffer, ch, 0, numSamples);
 
         juce::MidiBuffer masterFxMidi;
         for (auto& fx : masterFxPlugins)
             if (fx != nullptr)
-                fx->processBlock(masterTempBuffer, masterFxMidi);
+                fx->processBlock(masterBlock, masterFxMidi);
 
         for (int ch = 0; ch < numOutputChannels; ++ch)
-            outputBuffer.copyFrom(ch, 0, masterTempBuffer, ch, 0, numSamples);
+            if (ch < masterBlock.getNumChannels())
+                outputBuffer.copyFrom(ch, 0, masterBlock, ch, 0, numSamples);
     }
 
     outputBuffer.applyGain(masterGain.load());
@@ -965,25 +1208,53 @@ void HostEngine::audioDeviceAboutToStart(juce::AudioIODevice* device)
 
     const juce::ScopedLock scope(laneLock);
     sampleRate = device->getCurrentSampleRate();
+    noteOnDedupeSamples = juce::jmax(16, static_cast<int> (sampleRate * 0.002)); // ~2ms duplicate suppression
     expectedBlockSize = juce::jmax(16, device->getCurrentBufferSizeSamples());
-    const auto outputChannels = juce::jmax(2, device->getActiveOutputChannels().countNumberOfSetBits());
-    const auto preallocSamples = expectedBlockSize * 2;
+    audioSampleCounter.store(0, std::memory_order_relaxed);
+    std::fill(lastNoteOnSample.begin(), lastNoteOnSample.end(), 0);
+    const auto activeOutputChannels = device->getActiveOutputChannels().countNumberOfSetBits();
+    const auto namedOutputChannels = device->getOutputChannelNames().size();
+    const auto outputChannels = juce::jmax(2, juce::jmax(activeOutputChannels, namedOutputChannels));
+    const auto preallocSamples = juce::jmax(expectedBlockSize * 4, 4096);
+    const auto hostProcessChannels = 2;
+    appendLog("Audio device start: sr=" + juce::String(sampleRate, 1)
+              + " block=" + juce::String(expectedBlockSize)
+              + " activeOut=" + juce::String(activeOutputChannels)
+              + " namedOut=" + juce::String(namedOutputChannels)
+              + " allocOut=" + juce::String(outputChannels));
 
     for (auto& lane : lanes)
     {
         lane.synth.setCurrentPlaybackSampleRate(sampleRate);
-        lane.tempBuffer.setSize(outputChannels, preallocSamples, false, false, true);
-        if (lane.plugin != nullptr)
-            lane.plugin->prepareToPlay(sampleRate, expectedBlockSize);
+        lane.tempBuffer.setSize(hostProcessChannels, preallocSamples, false, false, true);
+        if (lane.graph != nullptr && lane.plugin != nullptr)
+        {
+            lane.graph->releaseResources();
+            lane.graph->setPlayConfigDetails(0, 2, sampleRate, expectedBlockSize);
+            lane.graph->prepareToPlay(sampleRate, expectedBlockSize);
+            lane.graph->reset();
+            const auto busesOk = true;
+            appendLog("Reinit lane instrument '" + lane.pluginName + "': "
+                      + pluginIoSummary(*lane.plugin)
+                      + (busesOk ? "" : " [bus fallback]"));
+        }
         for (auto& fx : lane.fxPlugins)
             if (fx != nullptr)
-                fx->prepareToPlay(sampleRate, expectedBlockSize);
+            {
+                const auto busesOk = preparePluginInstance(*fx, false, sampleRate, expectedBlockSize);
+                appendLog("Reinit lane FX: " + pluginIoSummary(*fx)
+                          + (busesOk ? "" : " [bus fallback]"));
+            }
     }
 
-    masterTempBuffer.setSize(outputChannels, preallocSamples, false, false, true);
+    masterTempBuffer.setSize(hostProcessChannels, preallocSamples, false, false, true);
     for (auto& fx : masterFxPlugins)
         if (fx != nullptr)
-            fx->prepareToPlay(sampleRate, expectedBlockSize);
+        {
+            const auto busesOk = preparePluginInstance(*fx, false, sampleRate, expectedBlockSize);
+            appendLog("Reinit master FX: " + pluginIoSummary(*fx)
+                      + (busesOk ? "" : " [bus fallback]"));
+        }
 }
 
 void HostEngine::audioDeviceStopped() {}
@@ -995,87 +1266,209 @@ HostEngine::Lane* HostEngine::getLane(int index)
     return &lanes[static_cast<size_t> (index)];
 }
 
-bool HostEngine::enqueueMidiMessage(int laneIndex, const juce::MidiMessage& message)
+bool HostEngine::enqueueMidiMessage(int laneIndex, const juce::MidiMessage& message, uint64_t dueSample)
 {
     auto* lane = getLane(laneIndex);
     if (lane == nullptr)
         return false;
+    const juce::SpinLock::ScopedLockType scope(lane->midiQueueLock);
+    const auto resolvedDueSample = (dueSample == 0)
+                                       ? audioSampleCounter.load(std::memory_order_relaxed)
+                                       : dueSample;
 
-    const auto* raw = message.getRawData();
-    const auto rawSize = message.getRawDataSize();
-    if (raw == nullptr || rawSize <= 0)
-        return false;
+    if (message.isNoteOn())
+    {
+        const auto midiChannel = juce::jlimit(1, 16, message.getChannel());
+        const auto noteNumber = juce::jlimit(0, 127, message.getNoteNumber());
+        const auto activeIndex = ((midiChannel - 1) * 128) + noteNumber;
+        // Prevent stacked note-ons on the same note/channel (can sound like AM/ring-mod beating).
+        if (lane->activeNotes[static_cast<size_t> (activeIndex)] != 0)
+            lane->midiQueue.push_back({ juce::MidiMessage::noteOff(midiChannel, noteNumber, 0.0f), resolvedDueSample });
 
-    RtMidiEvent ev;
-    ev.status = static_cast<uint8_t> (raw[0]);
-    ev.data1 = static_cast<uint8_t> (rawSize > 1 ? raw[1] : 0);
-    ev.data2 = static_cast<uint8_t> (rawSize > 2 ? raw[2] : 0);
+        lane->midiQueue.push_back({ message, resolvedDueSample });
+        lane->activeNotes[static_cast<size_t> (activeIndex)] = 1;
+        return true;
+    }
 
-    const auto write = lane->midiWriteIndex.load(std::memory_order_relaxed);
-    const auto read = lane->midiReadIndex.load(std::memory_order_acquire);
-    const auto nextWrite = write + 1;
-    if ((nextWrite - read) > static_cast<uint32_t> (midiQueueCapacity))
-        return false;
+    if (message.isNoteOff())
+    {
+        const auto midiChannel = juce::jlimit(1, 16, message.getChannel());
+        const auto noteNumber = juce::jlimit(0, 127, message.getNoteNumber());
+        const auto activeIndex = ((midiChannel - 1) * 128) + noteNumber;
+        lane->midiQueue.push_back({ message, resolvedDueSample });
+        lane->activeNotes[static_cast<size_t> (activeIndex)] = 0;
+        return true;
+    }
 
-    lane->midiQueue[write % static_cast<uint32_t> (midiQueueCapacity)] = ev;
-    lane->midiWriteIndex.store(nextWrite, std::memory_order_release);
+    lane->midiQueue.push_back({ message, resolvedDueSample });
     return true;
 }
 
-void HostEngine::popMidiEventsForLane(Lane& lane, juce::MidiBuffer& out)
+bool HostEngine::pushRtEvent(const RtEvent& ev)
 {
-    auto read = lane.midiReadIndex.load(std::memory_order_relaxed);
-    const auto write = lane.midiWriteIndex.load(std::memory_order_acquire);
+    if (! juce::isPositiveAndBelow(ev.lane, static_cast<int> (lanes.size())))
+        return false;
 
-    while (read < write)
-    {
-        const auto& ev = lane.midiQueue[read % static_cast<uint32_t> (midiQueueCapacity)];
-        out.addEvent(juce::MidiMessage(ev.status, ev.data1, ev.data2), 0);
-        ++read;
-    }
+    int start1 = 0, size1 = 0, start2 = 0, size2 = 0;
+    rtEventFifo.prepareToWrite(1, start1, size1, start2, size2);
+    if ((size1 + size2) <= 0)
+        return false;
 
-    lane.midiReadIndex.store(read, std::memory_order_release);
+    if (size1 > 0)
+        rtEventBuffer[static_cast<size_t> (start1)] = ev;
+    else
+        rtEventBuffer[static_cast<size_t> (start2)] = ev;
+
+    rtEventFifo.finishedWrite(1);
+    return true;
 }
 
-int HostEngine::collectDueNoteOffs(std::array<DueNoteOff, maxDueOffsPerBlock>& out)
+void HostEngine::drainRtEventsToMidi(uint64_t blockStartSample)
 {
-    const auto nowMs = juce::Time::getMillisecondCounterHiRes();
+    int start1 = 0, size1 = 0, start2 = 0, size2 = 0;
+    rtEventFifo.prepareToRead(rtEventFifoCapacity, start1, size1, start2, size2);
+
+    auto consumeRange = [this, blockStartSample] (int start, int size)
+    {
+        for (int i = 0; i < size; ++i)
+        {
+            const auto& ev = rtEventBuffer[static_cast<size_t> (start + i)];
+            const auto laneIndex = ev.lane;
+            const auto channel = juce::jlimit(1, 16, ev.channel);
+            const auto note = juce::jlimit(0, 127, ev.note);
+            const auto velocity = juce::jlimit(0.0f, 1.0f, ev.velocity);
+
+            if (ev.type == RtEventType::noteOn)
+            {
+                const auto noteStateIndex = (laneIndex * 16 * 128) + ((channel - 1) * 128) + note;
+                auto& lastOn = lastNoteOnSample[static_cast<size_t> (noteStateIndex)];
+                if (lastOn > 0 && blockStartSample > lastOn)
+                {
+                    const auto delta = blockStartSample - lastOn;
+                    if (delta < static_cast<uint64_t> (noteOnDedupeSamples))
+                        continue; // drop near-duplicate note-ons that create AM/ringing artifacts
+                }
+                lastOn = blockStartSample;
+
+                enqueueMidiMessage(laneIndex, juce::MidiMessage::noteOn(channel, note, velocity), blockStartSample);
+                if (ev.durationSec > 0.0f)
+                {
+                    const auto offsetSamples = static_cast<uint64_t> (juce::jmax(1.0, static_cast<double> (ev.durationSec) * sampleRate));
+                    scheduleNoteOffAtSample(laneIndex, channel, note, 0.0f, blockStartSample + offsetSamples);
+                }
+            }
+            else
+            {
+                enqueueMidiMessage(laneIndex, juce::MidiMessage::noteOff(channel, note, velocity), blockStartSample);
+            }
+        }
+    };
+
+    consumeRange(start1, size1);
+    consumeRange(start2, size2);
+    rtEventFifo.finishedRead(size1 + size2);
+}
+
+void HostEngine::popMidiEventsForLane(Lane& lane, juce::MidiBuffer& out, uint64_t blockStartSample, int numSamples)
+{
+    const auto blockEndSample = blockStartSample + static_cast<uint64_t> (juce::jmax(0, numSamples));
+    const juce::SpinLock::ScopedLockType scope(lane.midiQueueLock);
+    if (lane.midiQueue.empty())
+        return;
+
+    size_t writeIndex = 0;
+    const auto size = lane.midiQueue.size();
+    for (size_t readIndex = 0; readIndex < size; ++readIndex)
+    {
+        const auto& ev = lane.midiQueue[readIndex];
+        if (ev.dueSample < blockEndSample)
+        {
+            const auto delta = (ev.dueSample <= blockStartSample)
+                                   ? 0
+                                   : static_cast<int> (ev.dueSample - blockStartSample);
+            const auto sampleOffset = juce::jlimit(0, juce::jmax(0, numSamples - 1), delta);
+            out.addEvent(ev.message, sampleOffset);
+            continue;
+        }
+
+        if (writeIndex != readIndex)
+            lane.midiQueue[writeIndex] = ev;
+        ++writeIndex;
+    }
+    lane.midiQueue.resize(writeIndex);
+}
+
+int HostEngine::collectDueNoteOffs(std::array<DueNoteOff, maxDueOffsPerBlock>& out, uint64_t blockStartSample, int numSamples)
+{
+    if (scheduledNoteOffCount.load(std::memory_order_relaxed) <= 0)
+        return 0;
+
+    const auto blockEndSample = blockStartSample + static_cast<uint64_t> (juce::jmax(0, numSamples));
     const juce::SpinLock::ScopedLockType scope(scheduledLock);
+    if (scheduledNoteOffs.empty())
+    {
+        scheduledNoteOffCount.store(0, std::memory_order_relaxed);
+        return 0;
+    }
 
     int count = 0;
-    for (int i = static_cast<int> (scheduledNoteOffs.size()) - 1; i >= 0; --i)
+    size_t writeIndex = 0;
+    const auto size = scheduledNoteOffs.size();
+    for (size_t readIndex = 0; readIndex < size; ++readIndex)
     {
-        const auto& ev = scheduledNoteOffs[static_cast<size_t> (i)];
-        if (ev.dueMs <= nowMs)
+        const auto& ev = scheduledNoteOffs[readIndex];
+        if (ev.dueSample < blockEndSample)
         {
             if (count < maxDueOffsPerBlock)
             {
                 out[static_cast<size_t> (count)].lane = ev.lane;
+                out[static_cast<size_t> (count)].channel = ev.channel;
                 out[static_cast<size_t> (count)].note = ev.note;
                 out[static_cast<size_t> (count)].velocity = ev.velocity;
+                const auto delta = (ev.dueSample <= blockStartSample)
+                                       ? 0
+                                       : static_cast<int> (ev.dueSample - blockStartSample);
+                out[static_cast<size_t> (count)].sampleOffset = juce::jlimit(0, juce::jmax(0, numSamples - 1), delta);
                 ++count;
             }
-
-            scheduledNoteOffs.erase(scheduledNoteOffs.begin() + i);
+            continue; // consumed (or dropped if over maxDueOffsPerBlock)
         }
+
+        if (writeIndex != readIndex)
+            scheduledNoteOffs[writeIndex] = ev;
+        ++writeIndex;
     }
+    scheduledNoteOffs.resize(writeIndex);
+    scheduledNoteOffCount.store(static_cast<int> (scheduledNoteOffs.size()), std::memory_order_relaxed);
 
     return count;
 }
 
-void HostEngine::scheduleNoteOff(int laneIndex, int midiNote, float velocity, float durationSec)
+void HostEngine::scheduleNoteOffAtSample(int laneIndex, int midiChannel, int midiNote, float velocity, uint64_t dueSample)
+{
+    ScheduledNoteOff off;
+    off.lane = laneIndex;
+    off.channel = juce::jlimit(1, 16, midiChannel);
+    off.note = midiNote;
+    off.velocity = juce::jlimit(0.0f, 1.0f, velocity);
+    off.dueSample = dueSample;
+
+    const juce::SpinLock::ScopedLockType scope(scheduledLock);
+    if (scheduledNoteOffs.size() > 16384)
+        scheduledNoteOffs.erase(scheduledNoteOffs.begin(), scheduledNoteOffs.begin() + 2048);
+    scheduledNoteOffs.push_back(off);
+    scheduledNoteOffCount.store(static_cast<int> (scheduledNoteOffs.size()), std::memory_order_relaxed);
+}
+
+void HostEngine::scheduleNoteOff(int laneIndex, int midiChannel, int midiNote, float velocity, float durationSec)
 {
     if (durationSec <= 0.0f)
         return;
 
-    ScheduledNoteOff off;
-    off.lane = laneIndex;
-    off.note = midiNote;
-    off.velocity = velocity;
-    off.dueMs = juce::Time::getMillisecondCounterHiRes() + (durationSec * 1000.0);
-
-    const juce::SpinLock::ScopedLockType scope(scheduledLock);
-    scheduledNoteOffs.push_back(off);
+    const auto nowSample = audioSampleCounter.load(std::memory_order_relaxed);
+    const auto offsetSamples = static_cast<uint64_t> (juce::jmax(1.0, durationSec * sampleRate));
+    juce::ignoreUnused(velocity);
+    scheduleNoteOffAtSample(laneIndex, midiChannel, midiNote, 0.0f, nowSample + offsetSamples);
 }
 
 void HostEngine::appendLog(const juce::String& text)
@@ -1488,6 +1881,48 @@ bool HostEngine::loadInstrumentIntoLane(int laneIndex, int instrumentIndex)
     return true;
 }
 
+bool HostEngine::rebuildLaneGraphWithInstrument(int laneIndex, std::unique_ptr<juce::AudioPluginInstance> instrument)
+{
+    if (! juce::isPositiveAndBelow(laneIndex, static_cast<int> (lanes.size())))
+        return false;
+    if (instrument == nullptr)
+        return false;
+
+    auto graph = std::make_unique<juce::AudioProcessorGraph>();
+    graph->setPlayConfigDetails(0, 2, sampleRate, expectedBlockSize);
+
+    auto midiIn = graph->addNode(std::make_unique<juce::AudioProcessorGraph::AudioGraphIOProcessor>(
+        juce::AudioProcessorGraph::AudioGraphIOProcessor::midiInputNode));
+    auto audioOut = graph->addNode(std::make_unique<juce::AudioProcessorGraph::AudioGraphIOProcessor>(
+        juce::AudioProcessorGraph::AudioGraphIOProcessor::audioOutputNode));
+    auto instrumentNode = graph->addNode(std::move(instrument));
+
+    if (midiIn == nullptr || audioOut == nullptr || instrumentNode == nullptr)
+        return false;
+
+    graph->addConnection({ { midiIn->nodeID, juce::AudioProcessorGraph::midiChannelIndex },
+                           { instrumentNode->nodeID, juce::AudioProcessorGraph::midiChannelIndex } });
+    graph->addConnection({ { instrumentNode->nodeID, 0 }, { audioOut->nodeID, 0 } });
+    graph->addConnection({ { instrumentNode->nodeID, 1 }, { audioOut->nodeID, 1 } });
+
+    graph->prepareToPlay(sampleRate, expectedBlockSize);
+    graph->reset();
+
+    auto* pluginRaw = dynamic_cast<juce::AudioPluginInstance*> (instrumentNode->getProcessor());
+    if (pluginRaw == nullptr)
+        return false;
+
+    auto* lane = getLane(laneIndex);
+    if (lane == nullptr)
+        return false;
+
+    if (lane->graph != nullptr)
+        lane->graph->releaseResources();
+    lane->graph = std::move(graph);
+    lane->plugin = pluginRaw;
+    return true;
+}
+
 bool HostEngine::loadPluginDescriptionIntoLane(int laneIndex, const juce::PluginDescription& desc, const juce::String& stateBase64)
 {
     juce::String error;
@@ -1499,27 +1934,63 @@ bool HostEngine::loadPluginDescriptionIntoLane(int laneIndex, const juce::Plugin
         return false;
     }
 
-    instance->prepareToPlay(sampleRate, expectedBlockSize);
     if (stateBase64.isNotEmpty())
     {
         juce::MemoryBlock pluginState;
         if (pluginState.fromBase64Encoding(stateBase64) && pluginState.getSize() > 0)
             instance->setStateInformation(pluginState.getData(), static_cast<int> (pluginState.getSize()));
     }
+    const auto busesOk = configurePluginBuses(*instance, true);
+    const auto ioSummary = pluginIoSummary(*instance);
 
     {
         const juce::ScopedLock audioScope(deviceManager.getAudioCallbackLock());
         const juce::ScopedLock laneScope(laneLock);
+        if (! rebuildLaneGraphWithInstrument(laneIndex, std::move(instance)))
+            return false;
+
         if (auto* lane = getLane(laneIndex))
         {
-            if (lane->plugin != nullptr)
-                lane->plugin->releaseResources();
-            lane->plugin = std::move(instance);
             lane->pluginName = desc.name;
+            lane->midiQueue.clear();
+            lane->activeNotes.fill(0);
         }
     }
 
     closePluginEditorForLane(laneIndex);
+    float laneGain = 1.0f;
+    float lanePan = 0.0f;
+    bool laneMuted = false;
+    bool laneSolo = false;
+    {
+        const juce::ScopedLock scope(laneLock);
+        if (auto* lane = getLane(laneIndex))
+        {
+            laneGain = lane->gain.load();
+            lanePan = lane->pan.load();
+            laneMuted = lane->muted.load();
+            laneSolo = lane->solo.load();
+        }
+    }
+    appendLog("Lane " + juce::String(laneIndex) + " IO: " + ioSummary
+              + (busesOk ? "" : " [bus fallback]"));
+    appendLog("Lane " + juce::String(laneIndex) + " state: gain=" + juce::String(laneGain, 3)
+              + " pan=" + juce::String(lanePan, 3)
+              + " mute=" + juce::String(laneMuted ? 1 : 0)
+              + " solo=" + juce::String(laneSolo ? 1 : 0));
+
+    // Quick audible sanity check for freshly loaded instruments.
+    for (int ch = 1; ch <= 16; ++ch)
+    {
+        enqueueMidiMessage(laneIndex, juce::MidiMessage::noteOn(ch, 60, static_cast<juce::uint8> (127)));
+        scheduleNoteOff(laneIndex, ch, 60, 0.0f, 0.4f);
+    }
+    {
+        const juce::ScopedLock scope(laneLock);
+        if (auto* lane = getLane(laneIndex))
+            lane->auditionSamplesRemaining.store(static_cast<int> (sampleRate * 0.4), std::memory_order_relaxed);
+    }
+    appendLog("Lane " + juce::String(laneIndex) + " audition note sent (C4, 0.4s)");
     return true;
 }
 
@@ -1555,13 +2026,14 @@ bool HostEngine::loadEffectDescriptionIntoLaneSlot(int laneIndex, int slotIndex,
         return false;
     }
 
-    instance->prepareToPlay(sampleRate, expectedBlockSize);
     if (stateBase64.isNotEmpty())
     {
         juce::MemoryBlock pluginState;
         if (pluginState.fromBase64Encoding(stateBase64) && pluginState.getSize() > 0)
             instance->setStateInformation(pluginState.getData(), static_cast<int> (pluginState.getSize()));
     }
+    const auto busesOk = preparePluginInstance(*instance, false, sampleRate, expectedBlockSize);
+    const auto ioSummary = pluginIoSummary(*instance);
 
     {
         const juce::ScopedLock audioScope(deviceManager.getAudioCallbackLock());
@@ -1577,6 +2049,9 @@ bool HostEngine::loadEffectDescriptionIntoLaneSlot(int laneIndex, int slotIndex,
     }
 
     closeEffectEditorForLaneSlot(laneIndex, slotIndex);
+    appendLog("Lane " + juce::String(laneIndex) + " FX" + juce::String(slotIndex + 1)
+              + " IO: " + ioSummary
+              + (busesOk ? "" : " [bus fallback]"));
     return true;
 }
 
@@ -1629,13 +2104,14 @@ bool HostEngine::loadMasterEffectDescriptionIntoSlot(int slotIndex, const juce::
         return false;
     }
 
-    instance->prepareToPlay(sampleRate, expectedBlockSize);
     if (stateBase64.isNotEmpty())
     {
         juce::MemoryBlock pluginState;
         if (pluginState.fromBase64Encoding(stateBase64) && pluginState.getSize() > 0)
             instance->setStateInformation(pluginState.getData(), static_cast<int> (pluginState.getSize()));
     }
+    const auto busesOk = preparePluginInstance(*instance, false, sampleRate, expectedBlockSize);
+    const auto ioSummary = pluginIoSummary(*instance);
 
     const juce::ScopedLock audioScope(deviceManager.getAudioCallbackLock());
     if (masterFxPlugins[static_cast<size_t> (slotIndex)] != nullptr)
@@ -1644,6 +2120,9 @@ bool HostEngine::loadMasterEffectDescriptionIntoSlot(int slotIndex, const juce::
     masterFxPlugins[static_cast<size_t> (slotIndex)] = std::move(instance);
     masterFxNames[static_cast<size_t> (slotIndex)] = desc.name;
     closeMasterEffectEditorForSlot(slotIndex);
+    appendLog("Master FX" + juce::String(slotIndex + 1) + " IO: "
+              + ioSummary
+              + (busesOk ? "" : " [bus fallback]"));
     return true;
 }
 
@@ -1669,11 +2148,13 @@ void HostEngine::unloadInstrumentFromLane(int laneIndex)
     const juce::ScopedLock laneScope(laneLock);
     if (auto* lane = getLane(laneIndex))
     {
-        if (lane->plugin != nullptr)
-            lane->plugin->releaseResources();
-
-        lane->plugin.reset();
+        if (lane->graph != nullptr)
+            lane->graph->releaseResources();
+        lane->graph.reset();
+        lane->plugin = nullptr;
         lane->pluginName = "Built-in Sine";
+        lane->midiQueue.clear();
+        lane->activeNotes.fill(0);
     }
 
     uiStatus.setText("Lane " + juce::String(laneIndex) + " uses built-in sine", juce::dontSendNotification);
@@ -1959,8 +2440,23 @@ void HostEngine::handleTrigger(const juce::OSCMessage& m)
     else if (eventId == "snare") note = 38;
     else if (eventId == "hat") note = 42;
 
-    enqueueMidiMessage(laneIndex, juce::MidiMessage::noteOn(1, note, velocity));
-    scheduleNoteOff(laneIndex, note, velocity, 0.05f);
+    RtEvent ev;
+    ev.type = RtEventType::noteOn;
+    ev.lane = laneIndex;
+    ev.channel = 1;
+    ev.note = note;
+    ev.velocity = velocity;
+    ev.durationSec = 0.05f;
+    const auto queued = pushRtEvent(ev);
+    if (queued)
+    {
+        markLaneOscActivity(laneIndex);
+    }
+    else if (! juce::isPositiveAndBelow(laneIndex, static_cast<int> (lanes.size())))
+    {
+        appendLog("OSC trigger dropped: lane=" + juce::String(laneIndex)
+                  + " out of range (valid: 0.." + juce::String(static_cast<int> (lanes.size()) - 1) + ")");
+    }
 }
 
 void HostEngine::handleNote(const juce::OSCMessage& m)
@@ -1968,10 +2464,27 @@ void HostEngine::handleNote(const juce::OSCMessage& m)
     const auto laneIndex = getIntArg(m, 0, 0);
     const auto midiNote = juce::jlimit(0, 127, getIntArg(m, 1, 60));
     const auto velocity = juce::jlimit(0.0f, 1.0f, getFloatArg(m, 2, 0.8f));
-    const auto durationSec = getFloatArg(m, 3, -1.0f);
+    // If duration is omitted, use a short default gate so notes don't stack indefinitely.
+    const bool hasDurationArg = m.size() > 3 && (m[3].isFloat32() || m[3].isInt32());
+    const auto durationSec = hasDurationArg ? getFloatArg(m, 3, -1.0f) : 0.20f;
 
-    enqueueMidiMessage(laneIndex, juce::MidiMessage::noteOn(1, midiNote, velocity));
-    scheduleNoteOff(laneIndex, midiNote, velocity, durationSec);
+    RtEvent ev;
+    ev.type = RtEventType::noteOn;
+    ev.lane = laneIndex;
+    ev.channel = 1;
+    ev.note = midiNote;
+    ev.velocity = velocity;
+    ev.durationSec = durationSec;
+    const auto queued = pushRtEvent(ev);
+    if (queued)
+    {
+        markLaneOscActivity(laneIndex);
+    }
+    else if (! juce::isPositiveAndBelow(laneIndex, static_cast<int> (lanes.size())))
+    {
+        appendLog("OSC note_on dropped: lane=" + juce::String(laneIndex)
+                  + " out of range (valid: 0.." + juce::String(static_cast<int> (lanes.size()) - 1) + ")");
+    }
 }
 
 void HostEngine::handleNoteOff(const juce::OSCMessage& m)
@@ -1980,7 +2493,23 @@ void HostEngine::handleNoteOff(const juce::OSCMessage& m)
     const auto midiNote = juce::jlimit(0, 127, getIntArg(m, 1, 60));
     const auto velocity = juce::jlimit(0.0f, 1.0f, getFloatArg(m, 2, 0.0f));
 
-    enqueueMidiMessage(laneIndex, juce::MidiMessage::noteOff(1, midiNote, velocity));
+    RtEvent ev;
+    ev.type = RtEventType::noteOff;
+    ev.lane = laneIndex;
+    ev.channel = 1;
+    ev.note = midiNote;
+    ev.velocity = velocity;
+    ev.durationSec = -1.0f;
+    const auto queued = pushRtEvent(ev);
+    if (queued)
+    {
+        markLaneOscActivity(laneIndex);
+    }
+    else if (! juce::isPositiveAndBelow(laneIndex, static_cast<int> (lanes.size())))
+    {
+        appendLog("OSC note_off dropped: lane=" + juce::String(laneIndex)
+                  + " out of range (valid: 0.." + juce::String(static_cast<int> (lanes.size()) - 1) + ")");
+    }
 }
 
 void HostEngine::handleMod(const juce::OSCMessage& m)
@@ -2008,6 +2537,7 @@ void HostEngine::handleMod(const juce::OSCMessage& m)
 
             lane->muted.store(value >= 0.5f);
         }
+        markLaneOscActivity(laneIndex);
         syncLaneRow(laneIndex);
         return;
     }
@@ -2016,6 +2546,8 @@ void HostEngine::handleMod(const juce::OSCMessage& m)
     auto* lane = getLane(laneIndex);
     if (lane == nullptr)
         return;
+
+    markLaneOscActivity(laneIndex);
 
     if (target == "lane.gain")
     {
@@ -2050,7 +2582,7 @@ void HostEngine::handleMod(const juce::OSCMessage& m)
         juce::AudioPluginInstance* targetPlugin = nullptr;
         if (pluginIndex == 0)
         {
-            targetPlugin = lane->plugin.get();
+            targetPlugin = lane->plugin;
         }
         else if (juce::isPositiveAndBelow(pluginIndex - 1, kNumFxSlots))
         {
