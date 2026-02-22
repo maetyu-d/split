@@ -1,47 +1,83 @@
 # Split Audio Programming (JUCE)
 
-This repository is a starter scaffold for a two-app audio language system:
+Two desktop apps that work together over OSC:
 
-1. `PatternIDE`:
-- Language/IDE frontend (Tidal + SuperCollider style)
-- Sends OSC only
-- Emits three message families: trigger, note, modulation
+- `Pattern IDE` (language + live transport + timeline view)
+- `Plugin Host` (AU/VST3 lane host + mixer + recording)
 
-2. `PluginHost`:
-- Hosts AU/VST3 plugins
-- Receives OSC and maps to plugin/MIDI/automation actions
-- Handles mixing and WAV recording/export
+## What It Does
 
-## Protocol
-See: `docs/osc_protocol.md`
+### Pattern IDE
+- Split-style pattern language (`trigger`, `note`, `mod`, `break`, `drill`, mutations, sections)
+- Teletype-style mode (`language teletype`) with scripts, `RUN`, math/logic, pattern memory, metro/clock
+- OSC monitor + log view toggle
+- Transport display (bar/beat/step)
+- Deterministic timeline panel (hideable, draggable splitters)
+- Script save/load
+
+### Plugin Host
+- 10 track lanes + master lane
+- AU/VST3 plugin scanning and loading (instruments and effects)
+- Per-lane hidden/expandable FX chain + master FX chain
+- Lane gain/pan/mute/solo + master gain
+- Plugin editor windows for instruments/effects
+- OSC lane activity indicators
+- Stereo master level meter with 0 dB / -3 dB guides
+- Save/load host config (`.sconfig`)
+- Recording controls:
+  - `Record` (stereo WAV)
+  - `Rec Settings` (file, bit depth, sample rate)
+- `Audio Settings` button for device/buffer setup
 
 ## Build
 
+From project root:
+
 ```bash
-cmake -S . -B build -DJUCE_DIR=/absolute/path/to/JUCE
-cmake --build build
+cmake -S . -B build
+cmake --build build -j8
 ```
 
-## Current status
+## Run Both Apps
 
-Implemented:
-- Two JUCE app targets in one CMake project
-- OSC sender demo UI in `PatternIDE`
-- OSC receiver engine stub in `PluginHost`
-- Transport commands for recording start/stop
-- WAV file writing scaffold
+```bash
+open "/Users/md/Downloads/Split audio programming/build/PluginHost_artefacts/Plugin Host.app"
+open "/Users/md/Downloads/Split audio programming/build/PatternIDE_artefacts/Pattern IDE.app"
+```
 
-Not implemented yet:
-- Real parser/runtime for pattern language
-- Full plugin graph, plugin scanning/instantiation UI
-- MIDI/event scheduler with sample-accurate timing
-- Parameter mapping database and modulation ramp engine
-- Full mixer strips (gain/pan/sends) and offline export path
+Recommended order:
+1. Open `Plugin Host` first, set audio device/output, load plugins.
+2. Open `Pattern IDE`, load a script, press `Run`.
 
-## Suggested next implementation order
+## Examples
 
-1. Define AST + scheduler in IDE and output timestamped OSC bundles.
-2. Build host lane model (`Lane -> PluginChain -> MixerBus`).
-3. Implement note/trigger routing to MIDI-capable plugin instances.
-4. Implement modulation path resolver (`plugin[i].param[j]` and named paths).
-5. Add record/export UI and offline bounce option.
+Scripts are in:
+
+- `examples/scripts/`
+
+Includes split-style and TT-style examples:
+
+- `squarepusher_jungle.split`
+- `venetian_7_8_drill.split`
+- `autechre_polymeter.split`
+- `aphex_mutation.split`
+- `tt_metro_breaks.split`
+- `tt_pattern_registers.split`
+- `tt_logic_math_prob.split`
+- `tt_sections_songform.split`
+
+## Release Zip (macOS)
+
+Combined app zip:
+
+- `release/Split-macOS-builds.zip`
+
+Contains:
+- `Plugin Host.app`
+- `Pattern IDE.app`
+
+## OSC Protocol
+
+See:
+
+- `docs/osc_protocol.md`
