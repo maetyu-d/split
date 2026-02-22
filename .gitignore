@@ -1,5 +1,13 @@
 .DS_Store
-build/
+build/*
+!build/PluginHost_artefacts/
+build/PluginHost_artefacts/*
+!build/PluginHost_artefacts/Plugin Host.app/
+!build/PluginHost_artefacts/Plugin Host.app/**
+!build/PatternIDE_artefacts/
+build/PatternIDE_artefacts/*
+!build/PatternIDE_artefacts/Pattern IDE.app/
+!build/PatternIDE_artefacts/Pattern IDE.app/**
 JUCE/
 *.user
 *.swp
