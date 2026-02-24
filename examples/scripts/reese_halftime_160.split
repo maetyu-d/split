@@ -1,0 +1,40 @@
+tempo 160
+steps 16
+swing 0.06
+laneSteps 0 16
+laneSteps 1 16
+laneSteps 2 16
+laneSteps 3 16
+laneSteps 4 16
+
+# A: halftime with jittered hats
+note 0 0 [36 - - - - - - - 38 - - - - - - -] 0.96 0.12 kickSnrA 1.0 notEvery 4
+note 0 0 [- 42 - - 42 - 46 - - 42 - - 42 - 46 -] 0.68 0.035 hatsA 0.95 notEvery 4
+note 0 0 [- - - 39 - - - - - - - 37 - - - -] 0.62 0.05 ghostA 0.9 notEvery 4
+
+# B: busier turnaround every 4th
+note 0 0 [36 - - 42 - 38 - 42 36 - - 42 - 38 - 49] 0.9 0.07 breakB 0.95 every 4 notEvery 8
+note 12 0 [38 38 38 38] 0.8 0.025 snareRollB 0.9 every 4
+
+# C: stripped every 8th
+note 0 0 [36 - - - - - - - - - - - 38 - - -] 0.9 0.14 resetC 1.0 every 8
+
+# Track 2 chopped percussion
+note 0 1 [42 - 49 - 46 - 42 - 51 - 46 - 49 - 42 -] 0.58 0.06 perc2A 0.9 notEvery 4
+note 0 1 [42 49 46 42 51 46 49 42 49 46 42 51 46 49 42 38] 0.52 0.03 perc2B 0.85 every 4
+
+# Track 3 FM bass with long overlaps for glide
+note 0 3 [29 29 - 33 36 - 38 - 41 38 - 36 33 - 36 -] 0.66 0.44 bassA 1.0 notEvery 4
+note 0 3 [- 29 - - - 36 - - - 41 - - - 38 - -] 0.94 0.56 bassAccA 1.0 notEvery 4
+note 0 3 [29 33 36 - 38 41 38 - 36 33 29 - 33 36 38 -] 0.7 0.42 bassB 0.95 every 4 notEvery 8
+note 0 3 [- - - 36 - - - - 41 - - - 38 - - 33] 0.97 0.58 bassAccB 0.95 every 4 notEvery 8
+note 0 3 [26 - 26 - 29 29 - - 33 - 36 - 29 - - -] 0.68 0.48 bassC 1.0 every 8
+
+# Track 4-5 dark melodic layer
+note 0 2 [55 - 58 - 62 - 65 - 62 - 58 - 55 - 53 -] 0.62 0.2 padA 0.88 notEvery 4
+note 0 2 [62 - 65 - 69 - 72 - 69 - 65 - 62 - 60 -] 0.56 0.16 padB 0.84 every 4
+note 0 4 [67 - - 69 - - 72 - 74 - - 76 - - 79 -] 0.48 0.14 hiA 0.82 notEvery 8
+note 0 4 [74 - 76 - 79 - 81 - 79 - 76 - 74 - 72 -] 0.44 0.11 hiB 0.78 every 8
+
+scramble 0 every 8 0.5
+stutter 0 breakB 2 every 4 0.4

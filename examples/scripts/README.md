@@ -7,6 +7,10 @@ Included:
 - `venetian_7_8_drill.split`
 - `autechre_polymeter.split`
 - `aphex_mutation.split`
+- `amen_pressure_172.split`
+- `reese_halftime_160.split`
+- `rimstep_oddcycle_174.split`
+- `acid_break_architecture_178.split`
 - `tt_metro_breaks.split`
 - `tt_pattern_registers.split`
 - `tt_logic_math_prob.split`

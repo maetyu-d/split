@@ -1,0 +1,40 @@
+tempo 174
+steps 16
+swing 0.11
+laneSteps 0 16
+laneSteps 1 15
+laneSteps 2 16
+laneSteps 3 16
+laneSteps 4 12
+
+# A: rim-led skitter
+note 0 0 [36 - 37 - 38 - 42 - 36 - 37 - 38 - 42 -] 0.9 0.065 coreA 1.0 notEvery 4
+note 0 0 [- 42 - 46 - 42 - 46 - 42 - 46 - 42 - 49] 0.64 0.03 hatsA 0.92 notEvery 4
+note 0 0 [- - 39 - - - 37 - - - 39 - - - 37 -] 0.6 0.04 ghostA 0.88 notEvery 4
+
+# B: harder on every 4th
+note 0 0 [36 37 38 42 36 37 38 46 36 37 38 42 36 37 38 49] 0.82 0.04 fillB 0.92 every 4 notEvery 8
+note 8 0 [38 38 38 38 37 38 37 38] 0.76 0.025 snrB 0.9 every 4
+
+# C: minimal call every 8th
+note 0 0 [36 - - - - - 42 - - - - - 38 - - -] 0.9 0.11 resetC 1.0 every 8
+
+# Track 2 polymetric 15-step top percussion
+note 0 1 [42 - 46 - 49 - 46 - 42 - 51 - 49 - 46] 0.58 0.05 perc2A 0.9 notEvery 4
+note 0 1 [42 46 49 46 42 51 49 46 42 49 46 42 51 49 38] 0.52 0.03 perc2B 0.86 every 4
+
+# Track 3 FM bass
+note 0 3 [33 33 - 36 38 - 41 - 43 41 - 38 36 - 38 -] 0.67 0.37 bassA 1.0 notEvery 4
+note 0 3 [- 33 - - - 38 - - - 43 - - - 41 - -] 0.95 0.5 bassAccA 1.0 notEvery 4
+note 0 3 [33 36 38 - 41 43 41 - 38 36 33 - 36 38 41 -] 0.72 0.36 bassB 0.95 every 4 notEvery 8
+note 0 3 [- - - 38 - - - - 43 - - - 41 - - 36] 0.97 0.5 bassAccB 0.95 every 4 notEvery 8
+note 0 3 [28 - 28 - 33 33 - - 36 - 38 - 33 - - -] 0.68 0.4 bassC 1.0 every 8
+
+# Track 4-5 melodic shards
+note 0 2 [62 - 65 - 69 - 72 - 69 - 65 - 62 - 60 -] 0.6 0.15 leadA 0.88 notEvery 4
+note 0 2 [69 - 72 - 76 - 79 - 76 - 72 - 69 - 67 -] 0.54 0.13 leadB 0.84 every 4
+note 0 4 [74 - - 76 - 79 - - 81 - - 84] 0.46 0.11 hiA 0.8 notEvery 8
+note 0 4 [81 - 84 - 86 - 89 - 86 - 84 -] 0.42 0.09 hiB 0.76 every 8
+
+rotate 1 -2 every 5 0.8
+stutter 0 coreA 3 every 8 0.42

@@ -1,0 +1,42 @@
+tempo 178
+steps 16
+swing 0.09
+laneSteps 0 16
+laneSteps 1 16
+laneSteps 2 12
+laneSteps 3 16
+laneSteps 4 16
+
+# A: forward break drive
+note 0 0 [36 - - 42 38 - - 42 36 - 38 42 36 - - 49] 0.94 0.06 breakA 1.0 notEvery 4
+note 0 0 [- 42 - 46 - 42 - 46 - 42 - 46 - 42 - 51] 0.66 0.03 hatsA 0.94 notEvery 4
+note 0 0 [- - 39 - - - 37 - - - 39 - - - 37 -] 0.62 0.04 ghostA 0.9 notEvery 4
+
+# B: peak every 4th
+note 0 0 [36 42 38 42 36 42 38 46 36 42 38 42 36 42 38 49] 0.86 0.04 breakB 0.95 every 4 notEvery 8
+note 4 0 [38 38 38 38 38 38 38 38] 0.78 0.025 snareB 0.9 every 4
+
+# C: reset every 8th
+note 0 0 [36 - - - - - 42 - - - - - 38 - - -] 0.9 0.1 resetC 1.0 every 8
+
+# Track 2 rhythm machine
+note 0 1 [42 - 49 - 46 - 42 - 51 - 46 - 49 - 42 -] 0.58 0.05 perc2A 0.9 notEvery 4
+note 0 1 [42 49 46 42 51 46 49 42 49 46 42 51 46 49 42 38] 0.52 0.03 perc2B 0.86 every 4
+
+# Track 3 FM bass
+note 0 3 [36 36 - 38 41 - 43 - 46 43 - 41 38 - 41 -] 0.69 0.35 bassA 1.0 notEvery 4
+note 0 3 [- 36 - - - 41 - - - 46 - - - 43 - -] 0.95 0.5 bassAccA 1.0 notEvery 4
+note 0 3 [36 38 41 - 43 46 43 - 41 38 36 - 38 41 43 -] 0.73 0.35 bassB 0.95 every 4 notEvery 8
+note 0 3 [- - - 41 - - - - 46 - - - 43 - - 38] 0.97 0.5 bassAccB 0.95 every 4 notEvery 8
+note 0 3 [31 - 31 - 36 36 - - 41 - 43 - 36 - - -] 0.7 0.38 bassC 1.0 every 8
+
+# Track 4-5 melodic motion
+note 0 2 [64 - 67 - 71 - 74 - 71 - 67 -] 0.58 0.14 leadA 0.86 notEvery 4
+note 0 2 [67 - 71 - 74 - 76 - 74 - 71 -] 0.52 0.12 leadB 0.82 every 4
+note 0 4 [76 - - 79 - - 83 - 86 - - 88 - - 91 -] 0.46 0.1 hiA 0.78 notEvery 8
+note 0 4 [83 - 86 - 88 - 91 - 88 - 86 - 83 - 81 -] 0.42 0.09 hiB 0.74 every 8
+
+mod 0 2 lane.pan -0.28 0.0 1.0 every 2
+mod 8 2 lane.pan 0.28 0.0 1.0 every 2
+mod 0 4 lane.pan 0.32 0.0 1.0 every 2
+mod 8 4 lane.pan -0.32 0.0 1.0 every 2

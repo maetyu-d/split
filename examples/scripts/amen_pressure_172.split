@@ -1,0 +1,40 @@
+tempo 172
+steps 16
+swing 0.1
+laneSteps 0 16
+laneSteps 1 16
+laneSteps 2 16
+laneSteps 3 16
+laneSteps 4 16
+
+# A: tight amen-like pocket
+note 0 0 [36 - - - 38 - 42 - 36 - - 42 38 - - -] 0.94 0.07 kickSnrA 1.0 notEvery 4
+note 0 0 [- 42 - 42 - 42 - 46 - 42 - 42 - 42 - 49] 0.66 0.03 hatsA 0.95 notEvery 4
+note 0 0 [- - 37 - - - 39 - - - 37 - - - 39 -] 0.62 0.04 ghostA 0.9 notEvery 4
+
+# B: denser pressure every 4th
+note 0 0 [36 - 38 42 36 - 38 42 36 - 38 46 36 - 38 42] 0.88 0.045 breakB 0.95 every 4 notEvery 8
+note 8 0 [38 38 38 38 38 38 38 38] 0.76 0.025 snareRollB 0.85 every 4
+
+# C: sparse reset every 8th
+note 0 0 [36 - - - - - 42 - - - - - 38 - - -] 0.9 0.1 resetC 1.0 every 8
+
+# Track 2 rhythmic chop
+note 0 1 [42 - 46 - 49 - 46 - 42 - 51 - 49 - 46 -] 0.6 0.05 perc2A 0.9 notEvery 4
+note 0 1 [42 46 49 46 42 46 49 51 49 46 42 46 49 46 42 38] 0.54 0.03 perc2B 0.85 every 4
+
+# Track 3 FM bass: mono-legato + accent via velocity
+note 0 3 [33 33 - 36 38 - 40 - 43 40 - 38 36 - 38 -] 0.68 0.36 bassA 1.0 notEvery 4
+note 0 3 [- 33 - - - 38 - - - 43 - - - 40 - -] 0.95 0.48 bassAccA 1.0 notEvery 4
+note 0 3 [33 36 40 - 38 43 40 - 38 36 33 - 36 38 40 -] 0.72 0.36 bassB 0.95 every 4 notEvery 8
+note 0 3 [- - - 40 - - - - 43 - - - 40 - - 38] 0.97 0.5 bassAccB 0.95 every 4 notEvery 8
+note 0 3 [28 - 28 - 33 33 - - 36 - 40 - 33 - - -] 0.7 0.4 bassC 1.0 every 8
+
+# Track 4-5 melodic support
+note 0 2 [60 - 63 - 67 - 70 - 67 - 63 - 60 - 58 -] 0.64 0.16 leadA 0.9 notEvery 4
+note 0 2 [67 - 70 - 74 - 77 - 74 - 70 - 67 - 65 -] 0.58 0.14 leadB 0.86 every 4
+note 0 4 [72 - - 74 - - 77 - 79 - - 81 - - 84 -] 0.5 0.12 hiA 0.84 notEvery 8
+note 0 4 [79 - 81 - 84 - 86 - 84 - 81 - 79 - 77 -] 0.46 0.1 hiB 0.8 every 8
+
+stutter 0 kickSnrA 3 every 8 0.45
+rotate 0 1 every 4 0.6
