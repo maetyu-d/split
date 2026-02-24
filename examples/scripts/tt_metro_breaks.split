@@ -21,11 +21,11 @@ RUN 0 1
 SCRIPT 2
 ADD x 1
 IF x > 64 THEN SET x 1
-IF m0 == 1 THEN TR 0 kick 1.0
-IF m1 == 1 THEN TR 1 hat 0.50
-IF m2 == 1 THEN TR 1 hat 0.85
-IF m0 == 1 THEN NT 2 36 0.80 0.40 bass
-IF m1 == 1 THEN NT 3 67 0.62 0.20 leadA
+IF m0 == 1 THEN NT 0 36 1.00 0.06 drumKick
+IF m1 == 1 THEN NT 0 42 0.50 0.03 drumHat
+IF m2 == 1 THEN NT 0 46 0.85 0.05 drumOpenHat
+IF m0 == 1 THEN NT 3 36 0.82 1.20 bass
+IF m1 == 1 THEN NT 2 67 0.62 0.20 leadA
 IF m2 == 1 THEN NT 4 74 0.48 0.16 leadHi
 END
 

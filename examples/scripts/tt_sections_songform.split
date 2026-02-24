@@ -22,30 +22,30 @@ RUN 0 1
 
 # A: sparse intro groove
 SCRIPT 10
-IF m0 == 1 THEN TR 0 kick 0.92
-IF m1 == 1 THEN TR 1 hat 0.48
-IF m0 == 1 THEN NT 2 36 0.78 0.42 bassA
-IF m2 == 1 THEN NT 3 67 0.58 0.20 leadA
+IF m0 == 1 THEN NT 0 36 0.92 0.06 drumKick
+IF m1 == 1 THEN NT 0 42 0.48 0.03 drumHat
+IF m0 == 1 THEN NT 3 36 0.80 1.10 bassA
+IF m2 == 1 THEN NT 2 67 0.58 0.20 leadA
 END
 
 # B: denser lift
 SCRIPT 11
-IF m0 == 1 THEN TR 0 kick 0.98
-TR 1 hat 0.56
-IF m1 == 1 THEN TR 0 snare 0.82
-IF m0 == 1 THEN NT 2 41 0.84 0.34 bassB
-IF m1 == 1 THEN NT 3 72 0.66 0.18 leadB
+IF m0 == 1 THEN NT 0 36 0.98 0.06 drumKick
+NT 0 42 0.56 0.03 drumHat
+IF m1 == 1 THEN NT 0 38 0.82 0.05 drumSnare
+IF m0 == 1 THEN NT 3 41 0.86 1.12 bassB
+IF m1 == 1 THEN NT 2 72 0.66 0.18 leadB
 IF m2 == 1 THEN NT 4 79 0.50 0.14 hiB
 END
 
 # C: variation / breakdown logic
 SCRIPT 12
 ADD x 1
-IF m0 == 1 THEN TR 0 kick 0.90
-IF m2 == 1 THEN TR 0 snare 0.76
-IF m1 == 1 THEN TR 1 hat 0.40
-IF x > 8 THEN NT 2 33 0.74 0.60 bassC ELSE NT 2 45 0.74 0.24 bassC
-IF m2 == 1 THEN NT 3 62 0.62 0.28 leadC
+IF m0 == 1 THEN NT 0 36 0.90 0.06 drumKick
+IF m2 == 1 THEN NT 0 38 0.76 0.05 drumSnare
+IF m1 == 1 THEN NT 0 46 0.40 0.04 drumOpenHat
+IF x > 8 THEN NT 3 33 0.90 1.10 bassC ELSE NT 3 45 0.72 1.08 bassC
+IF m2 == 1 THEN NT 2 62 0.62 0.28 leadC
 IF m2 == 1 THEN NT 4 74 0.44 0.20 hiC
 IF x > 16 THEN SET x 0
 END

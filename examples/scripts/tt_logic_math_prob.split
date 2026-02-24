@@ -22,14 +22,15 @@ SCRIPT 2
 ADD x 1
 RRAND y 0 1
 CMP t y > 0.62
-IF t == 1 THEN TR 0 kick 0.96 ELSE TR 1 hat 0.42
+IF t == 1 THEN NT 0 36 0.96 0.06 drumKick ELSE NT 0 42 0.42 0.03 drumHat
 IF m1 == 1 THEN IRAND z 33 45
-IF m1 == 1 THEN NT 2 z 0.82 0.34 bassRnd
+IF m1 == 1 THEN NT 3 z 0.84 1.15 bassRnd
 IF m2 == 1 THEN IRAND z 60 72
-IF m2 == 1 THEN NT 3 z 0.68 0.18 leadRnd
+IF m2 == 1 THEN NT 2 z 0.68 0.18 leadRnd
+IF m2 == 1 THEN NT 0 38 0.74 0.05 drumSnare
 IF m2 == 1 THEN SIN t
 IF m2 == 1 THEN CLAMP t -1 1
-IF m2 == 1 THEN MD 3 lane.pan t 0.0
+IF m2 == 1 THEN MD 2 lane.pan t 0.0
 IF x > 128 THEN CLOCK 168
 IF x <= 128 THEN CLOCK 178
 END

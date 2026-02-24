@@ -334,6 +334,24 @@ bool preparePluginInstance(juce::AudioPluginInstance& plugin, bool isInstrument,
     return busesOk;
 }
 
+bool decodePluginStateBase64(const juce::String& stateBase64, juce::MemoryBlock& outState)
+{
+    if (stateBase64.isEmpty())
+        return false;
+    if (! outState.fromBase64Encoding(stateBase64))
+        return false;
+    return outState.getSize() > 0;
+}
+
+void applyPluginStateIfPresent(juce::AudioPluginInstance& plugin, const juce::MemoryBlock* maybeState)
+{
+    if (maybeState == nullptr || maybeState->getSize() == 0)
+        return;
+
+    plugin.setStateInformation(maybeState->getData(), static_cast<int> (maybeState->getSize()));
+    plugin.reset();
+}
+
 constexpr int kNumFxSlots = 3;
 constexpr int kNumMasterFxSlots = 6;
 constexpr int kHostProcessChannels = 16;
@@ -2451,12 +2469,8 @@ bool HostEngine::loadPluginDescriptionIntoLane(int laneIndex, const juce::Plugin
         return false;
     }
 
-    if (stateBase64.isNotEmpty())
-    {
-        juce::MemoryBlock pluginState;
-        if (pluginState.fromBase64Encoding(stateBase64) && pluginState.getSize() > 0)
-            instance->setStateInformation(pluginState.getData(), static_cast<int> (pluginState.getSize()));
-    }
+    juce::MemoryBlock decodedState;
+    const auto hasDecodedState = decodePluginStateBase64(stateBase64, decodedState);
     const auto busesOk = configurePluginBuses(*instance, true);
     const auto ioSummary = pluginIoSummary(*instance);
 
@@ -2468,6 +2482,8 @@ bool HostEngine::loadPluginDescriptionIntoLane(int laneIndex, const juce::Plugin
 
         if (auto* lane = getLane(laneIndex))
         {
+            if (lane->plugin != nullptr && hasDecodedState)
+                applyPluginStateIfPresent(*lane->plugin, &decodedState);
             lane->pluginName = desc.name;
             lane->midiQueue.clear();
             lane->activeNotes.fill(0);
@@ -2543,12 +2559,6 @@ bool HostEngine::loadEffectDescriptionIntoLaneSlot(int laneIndex, int slotIndex,
         return false;
     }
 
-    if (stateBase64.isNotEmpty())
-    {
-        juce::MemoryBlock pluginState;
-        if (pluginState.fromBase64Encoding(stateBase64) && pluginState.getSize() > 0)
-            instance->setStateInformation(pluginState.getData(), static_cast<int> (pluginState.getSize()));
-    }
     const auto busesOk = preparePluginInstance(*instance, false, sampleRate, expectedBlockSize);
     if (! busesOk)
     {
@@ -2557,6 +2567,9 @@ bool HostEngine::loadEffectDescriptionIntoLaneSlot(int laneIndex, int slotIndex,
         return false;
     }
     const auto ioSummary = pluginIoSummary(*instance);
+
+    juce::MemoryBlock decodedState;
+    const auto hasDecodedState = decodePluginStateBase64(stateBase64, decodedState);
 
     {
         const juce::ScopedLock audioScope(deviceManager.getAudioCallbackLock());
@@ -2567,6 +2580,8 @@ bool HostEngine::loadEffectDescriptionIntoLaneSlot(int laneIndex, int slotIndex,
                 lane->fxPlugins[static_cast<size_t> (slotIndex)]->releaseResources();
 
             lane->fxPlugins[static_cast<size_t> (slotIndex)] = std::move(instance);
+            if (lane->fxPlugins[static_cast<size_t> (slotIndex)] != nullptr && hasDecodedState)
+                applyPluginStateIfPresent(*lane->fxPlugins[static_cast<size_t> (slotIndex)], &decodedState);
             lane->fxNames[static_cast<size_t> (slotIndex)] = desc.name;
         }
     }
@@ -2627,12 +2642,6 @@ bool HostEngine::loadMasterEffectDescriptionIntoSlot(int slotIndex, const juce::
         return false;
     }
 
-    if (stateBase64.isNotEmpty())
-    {
-        juce::MemoryBlock pluginState;
-        if (pluginState.fromBase64Encoding(stateBase64) && pluginState.getSize() > 0)
-            instance->setStateInformation(pluginState.getData(), static_cast<int> (pluginState.getSize()));
-    }
     const auto busesOk = preparePluginInstance(*instance, false, sampleRate, expectedBlockSize);
     if (! busesOk)
     {
@@ -2642,11 +2651,16 @@ bool HostEngine::loadMasterEffectDescriptionIntoSlot(int slotIndex, const juce::
     }
     const auto ioSummary = pluginIoSummary(*instance);
 
+    juce::MemoryBlock decodedState;
+    const auto hasDecodedState = decodePluginStateBase64(stateBase64, decodedState);
+
     const juce::ScopedLock audioScope(deviceManager.getAudioCallbackLock());
     if (masterFxPlugins[static_cast<size_t> (slotIndex)] != nullptr)
         masterFxPlugins[static_cast<size_t> (slotIndex)]->releaseResources();
 
     masterFxPlugins[static_cast<size_t> (slotIndex)] = std::move(instance);
+    if (masterFxPlugins[static_cast<size_t> (slotIndex)] != nullptr && hasDecodedState)
+        applyPluginStateIfPresent(*masterFxPlugins[static_cast<size_t> (slotIndex)], &decodedState);
     masterFxNames[static_cast<size_t> (slotIndex)] = desc.name;
     closeMasterEffectEditorForSlot(slotIndex);
     appendLog("Master FX" + juce::String(slotIndex + 1) + " IO: "

@@ -30,14 +30,14 @@ SCRIPT 2
 ADD x 1
 IF m1 == 1 THEN PROT 1
 IF m0 == 1 THEN PGET y 0
-IF m0 == 1 THEN NT 2 y 0.86 0.48 bassP
+IF m0 == 1 THEN NT 3 y 0.88 1.15 bassP
 IF m0 == 1 THEN PGET z 4
-IF m0 == 1 THEN NT 3 z 0.62 0.22 melP
+IF m0 == 1 THEN NT 2 z 0.62 0.22 melP
 IF m1 == 1 THEN PRAND 7 67 79
 IF m1 == 1 THEN PGET t 7
 IF m1 == 1 THEN NT 4 t 0.50 0.16 hiP
-IF m0 == 1 THEN TR 0 kick 0.95
-IF m0 == 1 THEN TR 1 hat 0.48
+IF m0 == 1 THEN NT 0 36 0.95 0.06 drumKick
+IF m0 == 1 THEN NT 0 42 0.48 0.03 drumHat
 END
 
 RUN 0 2
